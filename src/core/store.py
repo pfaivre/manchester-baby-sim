@@ -1,5 +1,5 @@
 
-from bitarray import BitArray
+from src.core.bitarray import BitArray
 
 
 class Store:

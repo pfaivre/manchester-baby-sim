@@ -2,6 +2,10 @@
 from abc import ABC, abstractmethod
 
 
+class MachineRuntimeError(Exception):
+    pass
+
+
 class AbstractMachine(ABC):
     """Base class for a machine simulator
     """

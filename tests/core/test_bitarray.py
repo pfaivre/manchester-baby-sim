@@ -1,6 +1,6 @@
 from unittest import TestCase
 
-from bitarray import BitArray, b
+from src.core.bitarray import BitArray, b
 
 
 class TestBitArray(TestCase):

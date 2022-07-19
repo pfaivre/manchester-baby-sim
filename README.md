@@ -18,11 +18,11 @@ The result will appear on the 28th line in binary.
 - [x] Assembler language linting
 - [x] Assembler to binary
 - [x] Run the program
+- [x] Make the assembler generic by extracting the language definition
 - [ ] Unit and functional tests (partially done)
 - [ ] Interactive interface
 - [ ] Improve readability
 - [ ] Implement breakpoints: automatically stop at a given condition
-- [ ] Make the assembler generic by extracting the language definition
 - [ ] Implement other machines with this engine
 
 # Interface
@@ -34,7 +34,7 @@ This program aims to have an interactive console interface.
 The folling "screenshot" of the interface shows a loaded program that computes
 the 46th element of the Fibonacci's sequence:
 ```
-[ STATUS: RUNNING ]  [ STEP: 0 ]  [ TIME: 0:00:00 ]  [ SPEED: 700 ips ]
+[ STATUS: RUNNING ]  [ STEP: 0 ]  [ 01 LDN 31 ]  [ TIME: 0:00:00 ]  [ SPEED: 700 ips ]
 ................................  CI
 ................................  A
 

@@ -1,7 +1,7 @@
 from unittest import TestCase
 
-from bitarray import b
-from store import Store
+from src.core.bitarray import b
+from src.core.store import Store
 
 
 class TestStore(TestCase):

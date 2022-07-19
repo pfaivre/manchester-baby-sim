@@ -1,10 +1,12 @@
 
+from pathlib import Path
 from time import sleep
-from abstractmachine import AbstractMachine
-from assembler import Assembler, Mnemonic
 
-from bitarray import BitArray, b
-from store import Store
+from src.core.bitarray import BitArray, b
+from src.core.store import Store
+from src.machines.abstractmachine import AbstractMachine, MachineRuntimeError
+from src.machines.assembler import Assembler
+from src.machines.ssemmodel import SsemModel
 
 
 class Ssem(AbstractMachine):
@@ -26,23 +28,17 @@ class Ssem(AbstractMachine):
         - Typically performs at around 700 instructions per seconds
     """
 
-    WORD_LENGTH = 32
-    """Size of the words in the original SSEM (Manchester Baby)"""
+    def __init__(self, asm_file_path: Path | None = None):
+        self.model = SsemModel()
+        self.assembler = Assembler(model=self.model)
 
-    WORD_COUNT = 32
-    """Number of words in the original SSEM (Manchester Baby)"""
-
-    ADDRESS_LENGTH = 5
-    """Size of addresses in bits"""
-
-    TYPICAL_SPEED = 700
-    """Typical execution speed in intructions per seconds"""
-
-    def __init__(self):
-        self.store = Store(word_length=self.WORD_LENGTH, word_count=self.WORD_COUNT)
-        self.ci = BitArray(self.WORD_LENGTH)
-        self.a = BitArray(self.WORD_LENGTH)
+        self.store = Store(self.model.word_length, self.model.word_count)
+        self.ci = BitArray(self.model.word_length)
+        self.a = BitArray(self.model.word_length)
         self.stop_flag = True
+
+        if asm_file_path:
+            self.assembler.load_file(asm_file_path, self.store)
 
     def instruction_cycle(self):
         """Performs one instruction cycle
@@ -52,54 +48,56 @@ class Ssem(AbstractMachine):
         # Fetch
         ci_int = self.ci.to_int()
         ci_int += 1
-        self.ci = b(ci_int, self.WORD_LENGTH)
+        self.ci = b(ci_int, self.model.word_length)
 
         # Decode
         word = self.store[ci_int]
-        command, data = Assembler.decode_instruction(
-            word,
-            address_start=0,
-            address_length=self.ADDRESS_LENGTH,
-            opcode_start=13,
-            opcode_length=3
-        )
+        command, data = self.assembler.decode_instruction(word)
         print(f"{ci_int} {command.name} {data}")
 
         # Execute
+        try:
+            self._execute(command, data)
+        except IndexError:
+            raise MachineRuntimeError("Error: Out of bound memory access")
+
+    def _execute(self, command, data: BitArray):
+        """Execute an instruction
+        """
         match command:
-            case Mnemonic.JMP:
+            case self.model.Mnemonic.JMP:
                 # Change the next address to execute
                 self.ci = b(self.store[data])  # Copy the array
 
-            case Mnemonic.JRP:
+            case self.model.Mnemonic.JRP:
                 # Jump to the instruction at address CI + value of S
                 value = self.store[data].to_int()
                 ci_int = self.ci.to_int()
-                self.ci = b(value + ci_int, self.WORD_LENGTH)
+                self.ci = b(value + ci_int, self.model.word_length)
 
-            case Mnemonic.LDN:
+            case self.model.Mnemonic.LDN:
                 # Fetch the negated value
                 value = -self.store[data].to_int()
                 # Save it to the accumulator
-                self.a = b(value, self.WORD_LENGTH)
+                self.a = b(value, self.model.word_length)
 
-            case Mnemonic.STO:
+            case self.model.Mnemonic.STO:
                 # Save the value of the accumulator to the given address
                 self.store[data] = b(self.a)
 
-            case Mnemonic.SUB | Mnemonic.SUB2:
+            case self.model.Mnemonic.SUB | self.model.Mnemonic.SUB2:
                 s_int = self.store[data].to_int()
                 a_int = self.a.to_int()
                 # Save (accumulator - S) to the accumulator
-                self.a = b(a_int - s_int, self.WORD_LENGTH)
+                self.a = b(a_int - s_int, self.model.word_length)
 
-            case Mnemonic.CMP:
+            case self.model.Mnemonic.CMP:
                 # Skip next line if accumulator is negative
                 if self.a.to_int() < 0:
                     ci_int = self.ci.to_int() + 1
-                    self.ci = b(ci_int, self.WORD_LENGTH)
+                    self.ci = b(ci_int, self.model.word_length)
 
-            case Mnemonic.STP:
+            case self.model.Mnemonic.STP:
                 self.stop_flag = True
 
             case _:
@@ -113,6 +111,9 @@ class Ssem(AbstractMachine):
 
         while not self.stop_flag:
             # TODO: make a proper interface
+            # print("\33[2J") # clear the screen
+            # print("\33[1A") # move the cursor up one line
+
             print(f"{self.ci}  CI")
             print(f"{self.a}  A")
             print()
@@ -121,7 +122,7 @@ class Ssem(AbstractMachine):
             store_str[ci_int] = "\033[1m" + store_str[ci_int] + "\033[0m"
             print("\n".join(store_str))
             self.instruction_cycle()
-            sleep(1 / self.TYPICAL_SPEED)
+            sleep(1 / self.model.typical_speed)
 
     def clear_memory(self):
         """Reset the store to zero"""
@@ -129,6 +130,6 @@ class Ssem(AbstractMachine):
 
     def clear_state(self):
         """Reset the program counter and the accumulator to zero"""
-        self.ci = BitArray(self.WORD_LENGTH)
-        self.a = BitArray(self.WORD_LENGTH)
+        self.ci = BitArray(self.model.word_length)
+        self.a = BitArray(self.model.word_length)
 
