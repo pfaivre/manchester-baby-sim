@@ -63,15 +63,64 @@ class BitArray(list):
 
         return array
 
+    @classmethod
+    def from_string(cls, value: str):
+        """Creates a BitArray from a string containing 0 and 1
+
+        Arguments:
+            value: A string with 0 and 1, optionally prefixed with "0b"
+        """
+        if value.startswith("0b"):
+            value = value.split("0b")[1]
+
+        array = BitArray(len(value))
+
+        for i in range(len(value)):
+            array[i] = value[i] != "0"
+
+        return array
+
+    def to_int(self) -> int:
+        """Get the integer value of the binary in SSEM format (from left to right)"""
+        def twos_complement(value, bits):
+            """compute the two's complement of integer value"""
+            if (value & (1 << (bits - 1))) != 0: # if sign bit is set e.g., 8bit: 128-255
+                value = value - (1 << bits)      # compute negative value
+            return value                         # return positive value as is
+
+        # Copy the list
+        bits = list(self)
+
+        # Reverse bit order
+        bits.reverse()
+
+        # Convert to 0 and 1 string
+        bits = "0b" + ''.join(['1' if b else '0' for b in bits])
+
+        # Convert to int
+        return twos_complement(int(bits, 2), len(self))
+
+    def to_unsigned_int(self) -> int:
+        """Get the integer value of the binary in SSEM format (from left to right)"""
+        # Copy the list
+        bits = list(self)
+
+        # Reverse bit order
+        bits.reverse()
+
+        # Convert to 0 and 1 string
+        bits = "0b" + ''.join(['1' if b else '0' for b in bits])
+
+        # Convert to int
+        return int(bits, 2)
+
     def engrave(self, index: int, other):
         """Prints the bits of the given array to the current one at the given position
 
-        Example:
-            Let's consider:
-                - self: '01000000000'
-                - index: 6
-                - other: '1101'
-            Then self with eventually be: '01000011010'
+        Example: ::
+
+            array = b("01000000000").engrave(6, b("1101"))
+            # array is now b("01000011010")
 
         Arguments:
             index: Starting position in the current array
@@ -81,6 +130,8 @@ class BitArray(list):
             self[index] = b
             index += 1
 
+        return self
+
     def __eq__(self, other) -> bool:
         return isinstance(other, self.__class__) and list(self) == list(other)
 
@@ -88,4 +139,18 @@ class BitArray(list):
         """Visual representation of the array similar to what is found on the SSEM"""
         str_bits = ['_' if b else '.' for b in self]
         return "".join(map(str, str_bits))
+
+
+def b(value, digits: int=None) -> BitArray:
+    """Convert a value to a BitArray"""
+    from collections.abc import Iterable
+
+    if isinstance(value, int):
+        return BitArray.from_int(value, digits=digits)
+    elif isinstance(value, str):
+        return BitArray.from_string(value)
+    elif isinstance(value, Iterable):
+        return BitArray.from_iterable(value)
+    else:
+        raise ValueError(f"Unsupported type {type(value)}")
 

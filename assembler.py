@@ -1,7 +1,7 @@
 from enum import Enum
 from pathlib import Path
 
-from bitarray import BitArray
+from bitarray import BitArray, b
 from store import Store
 
 
@@ -12,13 +12,14 @@ class AssemblerError(Exception):
 class Mnemonic(Enum):
     """Instruction set of the SSEM with operation code
     """
-    JMP = BitArray.from_iterable([False, False, False])
-    JRP = BitArray.from_iterable([True,  False, False])
-    LDN = BitArray.from_iterable([False, True,  False])
-    STO = BitArray.from_iterable([True,  True,  False])
-    SUB = BitArray.from_iterable([False, False, True])
-    CMP = BitArray.from_iterable([False, True,  True])
-    STP = BitArray.from_iterable([True,  True,  True])
+    JMP = b("000")
+    JRP = b("100")
+    LDN = b("010")
+    STO = b("110")
+    SUB = b("001")
+    SUB2 = b("101")
+    CMP = b("011")
+    STP = b("111")
     NUM = None
 
 
@@ -32,6 +33,7 @@ class Assembler:
         Mnemonic.LDN,
         Mnemonic.STO,
         Mnemonic.SUB,
+        Mnemonic.SUB2,
         Mnemonic.NUM
     )
     """Commands that need a data"""
@@ -41,7 +43,8 @@ class Assembler:
         Mnemonic.JRP,
         Mnemonic.LDN,
         Mnemonic.STO,
-        Mnemonic.SUB
+        Mnemonic.SUB,
+        Mnemonic.SUB2
     )
     """Commands of which data must be an address"""
 
@@ -67,9 +70,6 @@ class Assembler:
                 if not line:
                     continue
 
-                # TODO: remove this temporary print
-                print(line)
-
                 parts = line.split(' ')
 
                 # Address
@@ -78,6 +78,7 @@ class Assembler:
                     if address != counter:
                         raise ValueError
                 except ValueError as ex:
+                    print(line)
                     print(f"Error: invalid address, expected {counter:02d}\n")
                     error = True
 
@@ -85,9 +86,11 @@ class Assembler:
                 try:
                     mnemonic = Mnemonic[parts[1]]
                 except KeyError:
+                    print(line)
                     print(f"Error: invalid mnemonic '{parts[1]}'\n")
                     error = True
                 except IndexError:
+                    print(line)
                     print(f"Error: missing mnemonic\n")
                     error = True
 
@@ -101,9 +104,11 @@ class Assembler:
                             if not 0 <= data < store_tmp.word_count:
                                 raise ValueError()
                     except IndexError:
+                        print(line)
                         print(f"Error: missing data for '{mnemonic.name}' instruction\n")
                         error = True
                     except ValueError:
+                        print(line)
                         print(f"Error: '{mnemonic.name}' instruction requires a valid address (from 0 to {store.word_count-1})\n")
                         error = True
 
@@ -115,6 +120,7 @@ class Assembler:
                     try:
                         word.engrave(0, data_bits)
                     except IndexError:
+                        print(line)
                         print("Error: Not enough space to store binary value\n")
                         error = True
                 else:
@@ -126,12 +132,14 @@ class Assembler:
                         # Write op code
                         word.engrave(cls.ADDRESS_SIZE, mnemonic.value)
                     except IndexError:
+                        print(line)
                         print("Error: Not enough space to store binary value\n")
                         error = True
 
                 try:
                     store_tmp[counter] = word
                 except IndexError:
+                    print(line)
                     print(f"Too many words for this machine (highest address is {store.word_count-1})\n")
                     error = True
 
@@ -143,6 +151,34 @@ class Assembler:
         # Finally, write the store
         for address, word in enumerate(store_tmp):
             store[address] = word
+
+    @classmethod
+    def decode_instruction(cls,
+        word: BitArray,
+        address_start: int = 0,
+        address_length: int = 5,
+        opcode_start: int = 13,
+        opcode_length: int = 3) -> tuple:
+        """Read the given word and parses its components
+
+        Params:
+            word: The word to parse
+            address_start: The position of the address in the word
+            address_length: The address size in bits
+            opcode_start: The position of the operation code in the word
+            opcode_length: The operation code size in bits
+
+        Returns:
+            (command, data)
+        """
+        # Read operation code (e.g. on SSEM, bits 13, 14 and 15)
+        opcode = b(word[opcode_start:opcode_start+opcode_length])
+        command = Mnemonic(opcode)
+
+        ## Read data (e.g. on SSEM, bits 0, 1, 2, 3 and 4)
+        data = b(word[address_start:address_start+address_length]).to_unsigned_int()
+
+        return (command, data)
 
     @classmethod
     def disassemble(cls, store: Store) -> str:

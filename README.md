@@ -8,18 +8,19 @@ This program aims at simulating accurately the SSEM while allowing to play with 
 
 # Test it
 
-Currently, this application can only assemble a programme into the store:
 ```sh
-python main.py
+python main.py samples/fibonacci.asm
 ```
+The result will appear on the 28th line in binary.
 
 # Roadmap
 
 - [x] Assembler language linting
 - [x] Assembler to binary
-- [ ] Run the program from the store
-- [ ] Unit and functional tests
+- [x] Run the program
+- [ ] Unit and functional tests (partially done)
 - [ ] Interactive interface
+- [ ] Improve readability
 - [ ] Implement breakpoints: automatically stop at a given condition
 - [ ] Make the assembler generic by extracting the language definition
 - [ ] Implement other machines with this engine
@@ -33,6 +34,7 @@ This program aims to have an interactive console interface.
 The folling "screenshot" of the interface shows a loaded program that computes
 the 46th element of the Fibonacci's sequence:
 ```
+[ STATUS: RUNNING ]  [ STEP: 0 ]  [ TIME: 0:00:00 ]  [ SPEED: 700 ips ]
 ................................  CI
 ................................  A
 
@@ -69,6 +71,19 @@ _...............................  27 NUM 1   ;N-th element of Fibonacci sequence
 ................................  30 NUM 0   ;Starting address of the loop
 ................................  31 NUM 0   ;Counter initialized to zero
 ```
+
+# Documentation
+
+[Documentation](docs/README.md)
+
+# Bibliography
+
+David Tarnoff, "Programming the 1948 Manchester Baby (SSEM)" https://www.youtube.com/watch?v=o7ozlF5ujUw
+
+David Sharp, "Manchester Baby Simulator" https://davidsharp.com/baby/
+
+Brian Napper, "The Manchester Small Scale Experimental Machine -- "The Baby""
+https://web.archive.org/web/20081013180637/http://www.computer50.org/mark1/new.baby.html#specification
 
 # License
 

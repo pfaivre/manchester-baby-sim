@@ -1,5 +1,7 @@
 ; This programme is written for the Small-Scale Experimental Machine (SSEM)
 ; It computes a given iteration of the Fibonacci sequence (specified in address 29)
+;
+; By David Tarnoff "Programming the Manchester Baby - Part 2" https://www.youtube.com/watch?v=y8jTDTe9yrg
 
 00 NUM 1    ;Incremental Value
 01 LDN 31   ;Load negative of counter
