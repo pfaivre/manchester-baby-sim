@@ -1,5 +1,6 @@
 
 from pathlib import Path
+import re
 
 from src.core.bitarray import BitArray, b
 from src.core.store import Store
@@ -18,6 +19,19 @@ class Assembler:
 
     def load_file(self, file: Path, store: Store):
         """Load an assembly file into the given store
+        """
+        format = self._guess_file_format(file)
+
+        match format:
+            case "asm":
+                self.load_asm(file, store)
+            case "snp":
+                self.load_snp(file, store)
+            case _:
+                raise AssemblerError("File format not recognized")
+
+    def load_asm(self, file: Path, store: Store):
+        """Load assembly file
         """
         store_tmp = Store(
             word_length=store.word_length,
@@ -115,6 +129,88 @@ class Assembler:
         # Finally, write the store
         for address, word in enumerate(store_tmp):
             store[address] = word
+
+    def load_snp(self, file: Path, store: Store):
+        """Load binary file
+        """
+        store_tmp = Store(
+            word_length=store.word_length,
+            word_count=store.word_count
+        )
+
+        counter = 0
+        error = False
+
+        with open(file, "r") as file:
+            for line in file:
+                # Cleaning
+                line = line[:-1].split(';')[0].strip()
+                if not line:
+                    continue
+
+                parts = line.split(": ")
+
+                # Address
+                try:
+                    address = int(parts[0])
+                    if address != counter:
+                        raise ValueError
+                except ValueError:
+                    print(line)
+                    print(f"Error: invalid address, expected {counter:02d}\n")
+                    error = True
+
+                # Word
+                try:
+                    word = b(parts[1])
+                except IndexError:
+                    print(line)
+                    print(f"Error: missing word\n")
+                    error = True
+
+                if len(word) != store.word_length:
+                    print(line)
+                    print(f"Error: word has a wrong length (got {len(word)}, expected {store.word_length}\n")
+                    error = True
+
+                try:
+                    store_tmp[counter] = word
+                except IndexError:
+                    print(line)
+                    print(f"Too many words for this machine (highest address is {store.word_count-1})\n")
+                    error = True
+
+                counter += 1
+
+        if error:
+            raise AssemblerError("Errors have been found in assembly program")
+
+        # Finally, write the store
+        for address, word in enumerate(store_tmp):
+            store[address] = word
+
+    def _guess_file_format(self, file: Path) -> str:
+        """Open the file and try to guess its format from its content
+
+        Can distinguish binary representation (.snp file) from assembly (.asm file)
+
+        Return:
+            "asm", "snp" or None
+        """
+        with open(file, "r") as file:
+            for line in file:
+                # Cleaning
+                line = line[:-1].split(';')[0].strip()
+                if not line:
+                    continue
+
+                if re.match("^\d+: [01]+$", line):
+                    return "snp"
+
+                if re.match("^\d+ \w+( \d+)?$", line):
+                    return "asm"
+
+        return None
 
     def decode_instruction(self, word: BitArray) -> tuple:
         """Read the given word and parses its components

@@ -11,16 +11,16 @@
 
 ## Instruction set
 
-| Op code | Original notation     | Modern notation | Description                                      |
-| :------ | :-------------------- | :-------------- | :----------------------------------------------- |
-| 000     | CI = S                | JMP             | Indirect jump                                    |
-| 100     | CI = CI + S           | JRP             | Relative jump                                    |
-| 010     | A = -S                | LDN             | Load negative of value in address S              |
-| 110     | S = A                 | STO             | Store accumulator in address S                   |
-| 001     | A = A - S             | SUB             | Substract value in address S from accumulator    |
-| 101     | A = A - S             | SUB             | Same as SUB                                      |
-| 101     | If A < 0, CI = CI + 1 | CMP             | Skip next instruction if accumulator is negative |
-| 111     | Stop                  | STP             | Halt the program                                 |
+| Op code | Original notation | Modern notation | Description                                        |
+| :------ | :---------------- | :-------------- | :------------------------------------------------- |
+| 000     | s,C               | JMP             | Indirect jump                                      |
+| 100     | c+s,C             | JRP             | Relative jump                                      |
+| 010     | -s,A              | LDN             | Load negative of value in address S to accumulator |
+| 110     | a,S               | STO             | Store accumulator in address S                     |
+| 001     | a-s, A            | SUB             | Substract value in address S from accumulator      |
+| 101     | -                 | -               | Same as SUB                                        |
+| 101     | Test              | CMP             | Skip next instruction if accumulator is negative   |
+| 111     | Stop              | STP             | Halt the program                                   |
 
 Format of an instruction (example here is STO 26):
 ```
@@ -31,4 +31,4 @@ Format of an instruction (example here is STO 26):
   |           `--- Operation code
   `--------------- S: address passed to the instruction
 ```
-The rest of the space in the instruction is not used.
+The other bits are not used.

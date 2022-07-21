@@ -140,6 +140,10 @@ class BitArray(list):
         str_bits = ['_' if b else '.' for b in self]
         return "".join(map(str, str_bits))
 
+    def __repr__(self) -> str:
+        # Not a regular use of repr, but simplifies a lot the debugging
+        return str(self)
+
 
 def b(value, digits: int=None) -> BitArray:
     """Convert a value to a BitArray"""

@@ -1,6 +1,8 @@
 
+from datetime import datetime
 from pathlib import Path
 from time import sleep
+from timeit import default_timer as timer
 
 from src.core.bitarray import BitArray, b
 from src.core.store import Store
@@ -28,7 +30,7 @@ class Ssem(AbstractMachine):
         - Typically performs at around 700 instructions per seconds
     """
 
-    def __init__(self, asm_file_path: Path | None = None):
+    def __init__(self, file: Path | None = None):
         self.model = SsemModel()
         self.assembler = Assembler(model=self.model)
 
@@ -37,10 +39,10 @@ class Ssem(AbstractMachine):
         self.a = BitArray(self.model.word_length)
         self.stop_flag = True
 
-        if asm_file_path:
-            self.assembler.load_file(asm_file_path, self.store)
+        if file:
+            self.assembler.load_file(file, self.store)
 
-    def instruction_cycle(self):
+    def instruction_cycle(self) -> str:
         """Performs one instruction cycle
 
         It first increments the program counter, then decodes the next instruction and executes it.
@@ -48,18 +50,20 @@ class Ssem(AbstractMachine):
         # Fetch
         ci_int = self.ci.to_int()
         ci_int += 1
+        ci_int %= self.model.word_count  # Program counter loops back to the begining when it exceeds the store boundaries
         self.ci = b(ci_int, self.model.word_length)
 
         # Decode
         word = self.store[ci_int]
         command, data = self.assembler.decode_instruction(word)
-        print(f"{ci_int} {command.name} {data}")
 
         # Execute
         try:
             self._execute(command, data)
         except IndexError:
             raise MachineRuntimeError("Error: Out of bound memory access")
+
+        return f"{ci_int:02d} {command.name} {data:02d}"
 
     def _execute(self, command, data: BitArray):
         """Execute an instruction
@@ -108,12 +112,22 @@ class Ssem(AbstractMachine):
         """
 
         self.stop_flag = False
+        instruction = ""
+        step = 0
+        last_work_time = 1
+        last_cycle_time = 1
+        overall_start = datetime.utcnow()
 
         while not self.stop_flag:
+            start = timer()
+
+            instruction = self.instruction_cycle()
+            step += 1
+
             # TODO: make a proper interface
             # print("\33[2J") # clear the screen
-            # print("\33[1A") # move the cursor up one line
 
+            print(f"[ STATUS: RUNNING ]  [ STEP: {step} ]  [ {instruction} ]  [ TIME: {datetime.utcnow() - overall_start} ]  [ SPEED: {int(round(1 / last_cycle_time, 0))} ips ]")
             print(f"{self.ci}  CI")
             print(f"{self.a}  A")
             print()
@@ -121,8 +135,11 @@ class Ssem(AbstractMachine):
             ci_int = self.ci.to_unsigned_int()
             store_str[ci_int] = "\033[1m" + store_str[ci_int] + "\033[0m"
             print("\n".join(store_str))
-            self.instruction_cycle()
-            sleep(1 / self.model.typical_speed)
+
+            last_work_time = timer() - start
+
+            sleep(max(0, (1 / self.model.typical_speed) - last_work_time))
+            last_cycle_time = timer() - start
 
     def clear_memory(self):
         """Reset the store to zero"""

@@ -9,7 +9,7 @@ This program aims at simulating accurately the SSEM while allowing to play with 
 # Test it
 
 ```sh
-python main.py samples/fibonacci.asm
+python main.py samples/ssem/fibonacci.asm
 ```
 The result will appear on the 28th line in binary.
 
@@ -19,11 +19,13 @@ The result will appear on the 28th line in binary.
 - [x] Assembler to binary
 - [x] Run the program
 - [x] Make the assembler generic by extracting the language definition
+- [x] Read binary representation files (.snp)
 - [ ] Unit and functional tests (partially done)
 - [ ] Interactive interface
 - [ ] Improve readability
 - [ ] Implement breakpoints: automatically stop at a given condition
 - [ ] Implement other machines with this engine
+- [ ] Accurate speed execution
 
 # Interface
 
@@ -79,6 +81,10 @@ _...............................  27 NUM 1   ;N-th element of Fibonacci sequence
 # Bibliography
 
 David Tarnoff, "Programming the 1948 Manchester Baby (SSEM)" https://www.youtube.com/watch?v=o7ozlF5ujUw
+
+Chris P Burton, "The Manchester University Small-Scale Experimental Machine Programmer's Reference Manual" http://curation.cs.manchester.ac.uk/computer50/www.computer50.org/mark1/prog98/ssemref.html
+
+Computer Conservation Society, "SSEM - Technical Overview" https://computerconservationsociety.org/ssemvolunteers/volunteers/introframe.html
 
 David Sharp, "Manchester Baby Simulator" https://davidsharp.com/baby/
 
