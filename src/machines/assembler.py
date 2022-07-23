@@ -221,16 +221,20 @@ class Assembler:
         Returns:
             (command, data)
         """
-        # Read operation code (e.g. on SSEM, bits 13, 14 and 15)
-        opcode = b(word[self.model.opcode_start:self.model.opcode_start+self.model.opcode_length])
+        try:
+            # Read operation code (e.g. on SSEM, bits 13, 14 and 15)
+            opcode = b(word[self.model.opcode_start:self.model.opcode_start+self.model.opcode_length])
+
+            ## Read data (e.g. on SSEM, bits 0, 1, 2, 3 and 4)
+            data = b(word[self.model.address_start:self.model.address_start+self.model.address_length]).to_unsigned_int()
+        except IndexError:
+            raise AssemblerError(f"Error: Cannot read instruction, the given word is too short")
 
         try:
             command = self.model.Mnemonic(opcode)
         except ValueError:
             raise AssemblerError(f"Error: Opcode '{opcode}' not recognized")
 
-        ## Read data (e.g. on SSEM, bits 0, 1, 2, 3 and 4)
-        data = b(word[self.model.address_start:self.model.address_start+self.model.address_length]).to_unsigned_int()
 
         return (command, data)
 
