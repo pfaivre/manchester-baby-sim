@@ -1,8 +1,9 @@
 
-from datetime import datetime
 from pathlib import Path
+from threading import Event
 from time import sleep
 from timeit import default_timer as timer
+from typing import Optional
 
 from src.core.bitarray import BitArray, b
 from src.core.store import Store
@@ -39,8 +40,23 @@ class Ssem(AbstractMachine):
         self.a = BitArray(self.model.word_length)
         self.stop_flag = True
 
+        self._last_cycle = 0
+        self._last_instruction = ""
+
         if file:
             self.assembler.load_file(file, self.store)
+
+    @property
+    def last_cycle(self):
+        return self._last_cycle
+
+    @property
+    def last_instruction(self):
+        return self._last_instruction
+
+    @property
+    def is_running(self):
+        return not self.stop_flag
 
     def instruction_cycle(self) -> str:
         """Performs one instruction cycle
@@ -107,39 +123,25 @@ class Ssem(AbstractMachine):
             case _:
                 raise Exception(f"Unsuported command '{command.value}'")
 
-    def start(self):
+    def start(self, stop_event: Optional[Event] = None):
         """Start the machine until stop instruction is met
         """
-
         self.stop_flag = False
-        instruction = ""
-        step = 0
+        self._last_cycle = 0
         last_work_time = 1
-        last_cycle_time = 1
-        overall_start = datetime.utcnow()
 
         while not self.stop_flag:
             start = timer()
 
-            instruction = self.instruction_cycle()
-            step += 1
+            self._last_instruction = self.instruction_cycle()
+            self._last_cycle += 1
 
-            # TODO: make a proper interface
-            # print("\33[2J") # clear the screen
-
-            print(f"[ STATUS: RUNNING ]  [ STEP: {step} ]  [ {instruction} ]  [ TIME: {datetime.utcnow() - overall_start} ]  [ SPEED: {int(round(1 / last_cycle_time, 0))} ips ]")
-            print(f"{self.ci}  CI")
-            print(f"{self.a}  A")
-            print()
-            store_str = str(self.store).split("\n")
-            ci_int = self.ci.to_unsigned_int()
-            store_str[ci_int] = "\033[1m" + store_str[ci_int] + "\033[0m"
-            print("\n".join(store_str))
+            if stop_event is not None and stop_event.is_set():
+                return
 
             last_work_time = timer() - start
 
             sleep(max(0, (1 / self.model.typical_speed) - last_work_time))
-            last_cycle_time = timer() - start
 
     def clear_memory(self):
         """Reset the store to zero"""
