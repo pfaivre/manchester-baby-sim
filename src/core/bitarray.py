@@ -137,7 +137,8 @@ class BitArray(list):
 
     def __str__(self) -> str:
         """Visual representation of the array similar to what is found on the SSEM"""
-        str_bits = ['_' if b else '.' for b in self]
+        # str_bits = ['_' if b else '.' for b in self]
+        str_bits = ['−' if b else '·' for b in self]
         return "".join(map(str, str_bits))
 
     def __repr__(self) -> str:

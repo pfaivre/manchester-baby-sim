@@ -1,8 +1,7 @@
 
 from pathlib import Path
 from threading import Event
-from time import sleep
-from timeit import default_timer as timer
+from time import perf_counter, sleep
 from typing import Optional
 
 from src.core.bitarray import BitArray, b
@@ -33,6 +32,7 @@ class Ssem(AbstractMachine):
 
     def __init__(self, file: Path | None = None):
         self.model = SsemModel()
+        self.speed = self.model.typical_speed
         self.assembler = Assembler(model=self.model)
 
         self.store = Store(self.model.word_length, self.model.word_count)
@@ -79,7 +79,10 @@ class Ssem(AbstractMachine):
         except IndexError:
             raise MachineRuntimeError("Error: Out of bound memory access")
 
-        return f"{ci_int:02d} {command.name} {data:02d}"
+        self._last_instruction = f"{ci_int:02d} {command.name} {data:02d}"
+        self._last_cycle += 1
+
+        return self._last_instruction
 
     def _execute(self, command, data: BitArray):
         """Execute an instruction
@@ -127,21 +130,18 @@ class Ssem(AbstractMachine):
         """Start the machine until stop instruction is met
         """
         self.stop_flag = False
-        self._last_cycle = 0
-        last_work_time = 1
 
-        while not self.stop_flag:
-            start = timer()
+        while not stop_event.is_set():
+            while not self.stop_flag:
+                start = perf_counter()
 
-            self._last_instruction = self.instruction_cycle()
-            self._last_cycle += 1
+                self.instruction_cycle()
 
-            if stop_event is not None and stop_event.is_set():
-                return
+                if stop_event is not None and stop_event.is_set():
+                    return
 
-            last_work_time = timer() - start
-
-            sleep(max(0, (1 / self.model.typical_speed) - last_work_time))
+                sleep(max(0, (1 / self.speed) - (perf_counter() - start)))
+            sleep(0.1)
 
     def clear_memory(self):
         """Reset the store to zero"""
