@@ -20,12 +20,20 @@ The result will appear on the 28th line in binary.
 - [x] Run the program
 - [x] Make the assembler generic by extracting the language definition
 - [x] Read binary representation files (.snp)
-- [ ] Unit and functional tests (partially done)
+- [x] Improve readability (display option)
 - [ ] Interactive interface (work in progress)
-- [ ] Improve readability
+  - [x] Use curses
+  - [x] User input
+  - [x] Display modes
+  - [x] Scroll in store with arrows when terminal is too small
+  - [ ] Handle screen resize
+  - [ ] Fix visual bugs
+  - [ ] Accurate speed execution
+  - [ ] Help window
+- [ ] Unit and functional tests (partially done)
 - [ ] Implement breakpoints: automatically stop at a given condition
 - [ ] Implement other machines with this engine
-- [ ] Accurate speed execution
+- [ ] Save user preferences
 
 # Interface
 

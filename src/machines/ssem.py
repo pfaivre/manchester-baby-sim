@@ -126,10 +126,10 @@ class Ssem(AbstractMachine):
             case _:
                 raise Exception(f"Unsuported command '{command.value}'")
 
-    def start(self, stop_event: Optional[Event] = None):
+    def start(self, stop_event: Optional[Event] = None, stopped: bool = False):
         """Start the machine until stop instruction is met
         """
-        self.stop_flag = False
+        self.stop_flag = stopped
 
         while not stop_event.is_set():
             while not self.stop_flag:

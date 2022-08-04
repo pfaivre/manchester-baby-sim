@@ -11,11 +11,14 @@ if __name__ == "__main__":
     stop_event = Event()
 
     try:
-        ssem = Ssem(file=sys.argv[1])
+        if len(sys.argv) > 1:
+            ssem = Ssem(file=sys.argv[1])
+        else:
+            ssem = Ssem()
         interface = CommandInterface(ssem, stop_event)
 
         thread_interface = Thread(target=interface.run_interface)
-        thread_machine = Thread(target=ssem.start, args=(stop_event,))
+        thread_machine = Thread(target=ssem.start, kwargs={"stop_event": stop_event, "stopped": True})
 
     except AssemblerError as ex:
         print(ex)
