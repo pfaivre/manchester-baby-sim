@@ -6,6 +6,8 @@ As it is very simple, it is a good subject to study the basic principles of comp
 
 This program aims at simulating accurately the SSEM while allowing to play with it and tweak it.
 
+![Programme screen recording](docs/screen_recording.gif)
+
 # Test it
 
 ```sh
@@ -20,59 +22,21 @@ The result will appear on the 28th line in binary.
 - [x] Run the program
 - [x] Make the assembler generic by extracting the language definition
 - [x] Read binary representation files (.snp)
+- [x] Improve readability (display option)
+- [x] Interactive interface
+  - [x] Use curses
+  - [x] User input
+  - [x] Display modes
+  - [x] Scroll in store with arrows when terminal is too small
+  - [x] Fix visual bugs
+- [ ] Improve interactive interface
+  - [ ] Handle screen resize
+  - [ ] Accurate speed execution
+  - [ ] Help window
 - [ ] Unit and functional tests (partially done)
-- [ ] Interactive interface
-- [ ] Improve readability
 - [ ] Implement breakpoints: automatically stop at a given condition
 - [ ] Implement other machines with this engine
-- [ ] Accurate speed execution
-
-# Interface
-
-**Notice**: this is work in progress.
-
-This program aims to have an interactive console interface.
-
-The folling "screenshot" of the interface shows a loaded program that computes
-the 46th element of the Fibonacci's sequence:
-```
-[ STATUS: RUNNING ]  [ STEP: 0 ]  [ 01 LDN 31 ]  [ TIME: 0:00:00 ]  [ SPEED: 700 ips ]
-................................  CI
-................................  A
-
-_...............................  00 NUM 1   ;Incremental Value
-_____........._.................  01 LDN 31  ;Load negative of counter
-..............._................  02 SUB 0   ;"Increment" our counter
-_____........__.................  03 STO 31  ;Storing negative of counter
-_____........._.................  04 LDN 31  ;Loading the positive of counter
-_____........__.................  05 STO 31  ;Storing positive of counter
-_.___.........._................  06 SUB 29  ;Substract upper limit
-..............__................  07 CMP     ;Continue if upper limit is not reached
-.............___................  08 STP     ;Halt
-__.__........._.................  09 LDN 27  ;Load negtive of N-th element
-..___.........._................  10 SUB 28  ;"Add" the N-1 element
-._.__........__.................  11 STO 26  ;Store negative of N+1 element
-__.__........._.................  12 LDN 27  ;Loads negative of N-th element
-..___........__.................  13 STO 28  ;Store negative for new N-1 element
-..___........._.................  14 LDN 28  ;Load positive of new N-1 element
-..___........__.................  15 STO 28  ;Store positive of new N-1 element
-._.__........._.................  16 LDN 26  ;Load positive of new N-th element
-__.__........__.................  17 STO 27  ;Store positive of new N-th element
-.____...........................  18 JMP 30  ;
-................................  19 JMP 0   ; 0
-................................  20 JMP 0   ; 0
-................................  21 JMP 0   ; 0
-................................  22 JMP 0   ; 0
-................................  23 JMP 0   ; 0
-................................  24 JMP 0   ; 0
-................................  25 JMP 0   ; 0
-................................  26 NUM 0   ;(N+1) element of Fibonacci sequence
-_...............................  27 NUM 1   ;N-th element of Fibonacci sequence
-................................  28 NUM 0   ;(N-1) element of Fibonacci sequence
-.___._..........................  29 NUM 46  ;Location to store target index
-................................  30 NUM 0   ;Starting address of the loop
-................................  31 NUM 0   ;Counter initialized to zero
-```
+- [ ] Save user preferences
 
 # Documentation
 

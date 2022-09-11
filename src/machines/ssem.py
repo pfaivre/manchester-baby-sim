@@ -1,8 +1,8 @@
 
-from datetime import datetime
 from pathlib import Path
-from time import sleep
-from timeit import default_timer as timer
+from threading import Event
+from time import perf_counter, sleep
+from typing import Optional
 
 from src.core.bitarray import BitArray, b
 from src.core.store import Store
@@ -32,6 +32,7 @@ class Ssem(AbstractMachine):
 
     def __init__(self, file: Path | None = None):
         self.model = SsemModel()
+        self.speed = self.model.typical_speed
         self.assembler = Assembler(model=self.model)
 
         self.store = Store(self.model.word_length, self.model.word_count)
@@ -39,8 +40,23 @@ class Ssem(AbstractMachine):
         self.a = BitArray(self.model.word_length)
         self.stop_flag = True
 
+        self._last_cycle = 0
+        self._last_instruction = ""
+
         if file:
             self.assembler.load_file(file, self.store)
+
+    @property
+    def last_cycle(self):
+        return self._last_cycle
+
+    @property
+    def last_instruction(self):
+        return self._last_instruction
+
+    @property
+    def is_running(self):
+        return not self.stop_flag
 
     def instruction_cycle(self) -> str:
         """Performs one instruction cycle
@@ -63,7 +79,10 @@ class Ssem(AbstractMachine):
         except IndexError:
             raise MachineRuntimeError("Error: Out of bound memory access")
 
-        return f"{ci_int:02d} {command.name} {data:02d}"
+        self._last_instruction = f"{ci_int:02d} {command.name} {data:02d}"
+        self._last_cycle += 1
+
+        return self._last_instruction
 
     def _execute(self, command, data: BitArray):
         """Execute an instruction
@@ -107,39 +126,22 @@ class Ssem(AbstractMachine):
             case _:
                 raise Exception(f"Unsuported command '{command.value}'")
 
-    def start(self):
+    def start(self, stop_event: Optional[Event] = None, stopped: bool = False):
         """Start the machine until stop instruction is met
         """
+        self.stop_flag = stopped
 
-        self.stop_flag = False
-        instruction = ""
-        step = 0
-        last_work_time = 1
-        last_cycle_time = 1
-        overall_start = datetime.utcnow()
+        while not stop_event.is_set():
+            while not self.stop_flag:
+                start = perf_counter()
 
-        while not self.stop_flag:
-            start = timer()
+                self.instruction_cycle()
 
-            instruction = self.instruction_cycle()
-            step += 1
+                if stop_event is not None and stop_event.is_set():
+                    return
 
-            # TODO: make a proper interface
-            # print("\33[2J") # clear the screen
-
-            print(f"[ STATUS: RUNNING ]  [ STEP: {step} ]  [ {instruction} ]  [ TIME: {datetime.utcnow() - overall_start} ]  [ SPEED: {int(round(1 / last_cycle_time, 0))} ips ]")
-            print(f"{self.ci}  CI")
-            print(f"{self.a}  A")
-            print()
-            store_str = str(self.store).split("\n")
-            ci_int = self.ci.to_unsigned_int()
-            store_str[ci_int] = "\033[1m" + store_str[ci_int] + "\033[0m"
-            print("\n".join(store_str))
-
-            last_work_time = timer() - start
-
-            sleep(max(0, (1 / self.model.typical_speed) - last_work_time))
-            last_cycle_time = timer() - start
+                sleep(max(0, (1 / self.speed) - (perf_counter() - start)))
+            sleep(0.1)
 
     def clear_memory(self):
         """Reset the store to zero"""
