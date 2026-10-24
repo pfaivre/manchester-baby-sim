@@ -22,6 +22,7 @@ if __name__ == "__main__":
 
     except AssemblerError as ex:
         print(ex)
+        sys.exit(1)
 
     try:
         thread_interface.start()

@@ -20,7 +20,10 @@ class Assembler:
     def load_file(self, file: Path, store: Store):
         """Load an assembly file into the given store
         """
-        format = self._guess_file_format(file)
+        try:
+            format = self._guess_file_format(file)
+        except FileNotFoundError:
+            raise AssemblerError(f"File {file} not found")
 
         match format:
             case "asm":
@@ -39,7 +42,6 @@ class Assembler:
         )
 
         counter = 0
-        error = False
 
         with open(file, "r") as file:
             for line in file:
@@ -57,20 +59,17 @@ class Assembler:
                         raise ValueError
                 except ValueError as ex:
                     print(line)
-                    print(f"Error: invalid address, expected {counter:02d}\n")
-                    error = True
+                    raise AssemblerError(f"Error: invalid address, expected {counter:02d}\n")
 
                 # Mnemonic
                 try:
                     mnemonic = self.model.Mnemonic[parts[1]]
                 except KeyError:
                     print(line)
-                    print(f"Error: invalid mnemonic '{parts[1]}'\n")
-                    error = True
+                    raise AssemblerError(f"Error: invalid mnemonic '{parts[1]}'\n")
                 except IndexError:
                     print(line)
-                    print(f"Error: missing mnemonic\n")
-                    error = True
+                    raise AssemblerError(f"Error: missing mnemonic\n")
 
                 # Data
                 data = 0
@@ -80,27 +79,26 @@ class Assembler:
 
                         if mnemonic in self.model.instructions_data_is_address:
                             if not 0 <= data < store_tmp.word_count:
-                                raise ValueError()
+                                print(line)
+                                raise AssemblerError(f"Error: '{mnemonic.name}' instruction requires a valid address (from 0 to {store.word_count-1})\n")
+
                     except IndexError:
                         print(line)
-                        print(f"Error: missing data for '{mnemonic.name}' instruction\n")
-                        error = True
+                        raise AssemblerError(f"Error: missing data for '{mnemonic.name}' instruction\n")
                     except ValueError:
                         print(line)
-                        print(f"Error: '{mnemonic.name}' instruction requires a valid address (from 0 to {store.word_count-1})\n")
-                        error = True
+                        raise AssemblerError(f"Error: '{mnemonic.name}' instruction requires a numeric value\n")
 
                 # Write the line to the store
                 word = BitArray(store_tmp.word_length)
                 if mnemonic == self.model.Mnemonic.NUM:
                     # Write numerical value
-                    data_bits = BitArray.from_int(data, store_tmp.word_length)
                     try:
+                        data_bits = BitArray.from_int(data, store_tmp.word_length)
                         word.engrave(0, data_bits)
                     except IndexError:
                         print(line)
-                        print("Error: Not enough space to store binary value\n")
-                        error = True
+                        raise AssemblerError("Error: Number is too large, not enough space to store binary value\n")
                 else:
                     # Write data
                     data_bits = BitArray.from_int(data, self.model.address_length)
@@ -111,20 +109,15 @@ class Assembler:
                         word.engrave(self.model.opcode_start, mnemonic.value)
                     except IndexError:
                         print(line)
-                        print("Error: Not enough space to store binary value\n")
-                        error = True
+                        raise AssemblerError("Error: Number is too large, not enough space to store binary value\n")
 
                 try:
                     store_tmp[counter] = word
                 except IndexError:
                     print(line)
-                    print(f"Too many words for this machine (highest address is {store.word_count-1})\n")
-                    error = True
+                    raise AssemblerError(f"Too many words for this machine (highest address is {store.word_count-1})\n")
 
                 counter += 1
-
-        if error:
-            raise AssemblerError("Errors have been found in assembly program")
 
         # Finally, write the store
         for address, word in enumerate(store_tmp):
@@ -195,8 +188,11 @@ class Assembler:
         Can distinguish binary representation (.snp file) from assembly (.asm file)
 
         Return:
-            "asm", "snp" or None
+            "asm", "snp", "directory" or None
         """
+        if Path(file).is_dir():
+            return "directory"
+
         with open(file, "r") as file:
             for line in file:
                 # Cleaning
@@ -204,10 +200,10 @@ class Assembler:
                 if not line:
                     continue
 
-                if re.match("^\d+: [01]+$", line):
+                if re.match(r"^\d+: [01]+$", line):
                     return "snp"
 
-                if re.match("^\d+ \w+( \d+)?$", line):
+                if re.match(r"^\d+ \w+( \d+)?$", line):
                     return "asm"
 
         return None

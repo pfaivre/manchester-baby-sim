@@ -39,8 +39,7 @@ class BitArray(list):
         else:
             # TODO: test that
             # Compute two's complements
-            value = -1 * value
-            bits = bin(value - pow(2, digits)).split("0b")[1]
+            bits = bin(-value - pow(2, digits)).split("0b")[1]
 
             # Reverse bits and write them in a BitArray
             bits = list(bits)
@@ -80,14 +79,14 @@ class BitArray(list):
 
         return array
 
+    def _twos_complement(self, value: int, bits: int) -> int:
+        """compute the two's complement of integer value"""
+        if (value & (1 << (bits - 1))) != 0: # if sign bit is set e.g., 8bit: 128-255
+            value = value - (1 << bits)      # compute negative value
+        return value                         # return positive value as is
+
     def to_int(self) -> int:
         """Get the integer value of the binary in SSEM format (from left to right)"""
-        def twos_complement(value, bits):
-            """compute the two's complement of integer value"""
-            if (value & (1 << (bits - 1))) != 0: # if sign bit is set e.g., 8bit: 128-255
-                value = value - (1 << bits)      # compute negative value
-            return value                         # return positive value as is
-
         # Copy the list
         bits = list(self)
 
@@ -98,7 +97,7 @@ class BitArray(list):
         bits = "0b" + ''.join(['1' if b else '0' for b in bits])
 
         # Convert to int
-        return twos_complement(int(bits, 2), len(self))
+        return self._twos_complement(int(bits, 2), len(self))
 
     def to_unsigned_int(self) -> int:
         """Get the integer value of the binary in SSEM format (from left to right)"""
@@ -125,6 +124,9 @@ class BitArray(list):
         Arguments:
             index: Starting position in the current array
             other: Array to print to the current one
+
+        Raises:
+            IndexError: when writing outside of the original BitArray
         """
         for b in other:
             self[index] = b
