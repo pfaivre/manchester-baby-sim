@@ -46,11 +46,11 @@ class Assembler:
         with open(file, "r") as file:
             for line in file:
                 # Cleaning
-                line = line[:-1].split(';')[0].strip()
+                line = line.rstrip('\n').split(';')[0].strip()
                 if not line:
                     continue
 
-                parts = line.split(' ')
+                parts = line.split()
 
                 # Address
                 try:
@@ -106,7 +106,7 @@ class Assembler:
                         word.engrave(self.model.address_start, data_bits)
 
                         # Write op code
-                        word.engrave(self.model.opcode_start, mnemonic.value)
+                        word.engrave(self.model.opcode_start, BitArray.from_int(mnemonic.value, self.model.opcode_length))
                     except IndexError:
                         print(line)
                         raise AssemblerError("Error: Number is too large, not enough space to store binary value\n")
@@ -137,7 +137,7 @@ class Assembler:
         with open(file, "r") as file:
             for line in file:
                 # Cleaning
-                line = line[:-1].split(';')[0].strip()
+                line = line.rstrip('\n').split(';')[0].strip()
                 if not line:
                     continue
 
@@ -196,7 +196,7 @@ class Assembler:
         with open(file, "r") as file:
             for line in file:
                 # Cleaning
-                line = line[:-1].split(';')[0].strip()
+                line = line.rstrip('\n').split(';')[0].strip()
                 if not line:
                     continue
 
@@ -217,14 +217,18 @@ class Assembler:
         Returns:
             (command, data)
         """
-        try:
-            # Read operation code (e.g. on SSEM, bits 13, 14 and 15)
-            opcode = b(word[self.model.opcode_start:self.model.opcode_start+self.model.opcode_length])
-
-            ## Read data (e.g. on SSEM, bits 0, 1, 2, 3 and 4)
-            data = b(word[self.model.address_start:self.model.address_start+self.model.address_length]).to_unsigned_int()
-        except IndexError:
+        # Check the word is long enough to contain an instruction
+        if len(word) < max(
+            self.model.opcode_start + self.model.opcode_length,
+            self.model.address_start + self.model.address_length
+        ):
             raise AssemblerError(f"Error: Cannot read instruction, the given word is too short")
+
+        # Read operation code (e.g. on SSEM, bits 13, 14 and 15)
+        opcode = b(word[self.model.opcode_start:self.model.opcode_start+self.model.opcode_length]).to_unsigned_int()
+
+        ## Read data (e.g. on SSEM, bits 0, 1, 2, 3 and 4)
+        data = b(word[self.model.address_start:self.model.address_start+self.model.address_length]).to_unsigned_int()
 
         try:
             command = self.model.Mnemonic(opcode)

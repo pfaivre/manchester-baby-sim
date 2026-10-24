@@ -20,14 +20,14 @@ class TestAssembler(TestCase):
         self.mock_model.address_start = 0
         self.mock_model.address_length = 5
         class SampleMnemonic(Enum):
-            A = b("000")
-            B = b("100")
-            C = b("010")
-            D = b("110")
-            E = b("001")
-            # F = b("101")
-            G = b("011")
-            H = b("111")
+            A = 0
+            B = 1
+            C = 2
+            D = 3
+            E = 4
+            # F = 5
+            G = 6
+            H = 7
             I = None
         self.mock_model.Mnemonic = SampleMnemonic
 
@@ -105,7 +105,7 @@ foo bar
 
         for input, expected_output in test_suite.items():
             with patch("builtins.open", mock_open(read_data=input)) as mock_file:
-                result = test_func(mock_self, b(input))
+                result = test_func(mock_self, Path("some_file"))
                 self.assertEqual(result, expected_output)
 
     def test_decode_instruction(self):

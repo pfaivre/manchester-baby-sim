@@ -2,7 +2,6 @@
 from pathlib import Path
 from threading import Event
 from time import perf_counter, sleep
-from typing import Optional
 
 from src.core.bitarray import BitArray, b
 from src.core.store import Store
@@ -126,7 +125,7 @@ class Ssem(AbstractMachine):
             case _:
                 raise Exception(f"Unsuported command '{command.value}'")
 
-    def start(self, stop_event: Optional[Event] = None, stopped: bool = False):
+    def start(self, stop_event: Event, stopped: bool = False):
         """Start the machine until stop instruction is met
         """
         self.stop_flag = stopped
@@ -137,7 +136,7 @@ class Ssem(AbstractMachine):
 
                 self.instruction_cycle()
 
-                if stop_event is not None and stop_event.is_set():
+                if stop_event.is_set():
                     return
 
                 sleep(max(0, (1 / self.speed) - (perf_counter() - start)))

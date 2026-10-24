@@ -1,8 +1,6 @@
 
 from enum import Enum
 
-from src.core.bitarray import b
-
 
 class SsemModel:
     """Describes the main characteristics of the original SSEM
@@ -32,14 +30,14 @@ class SsemModel:
     class Mnemonic(Enum):
         """Instruction set with operation codes
         """
-        JMP = b("000")
-        JRP = b("100")
-        LDN = b("010")
-        STO = b("110")
-        SUB = b("001")
-        SUB2 = b("101")
-        CMP = b("011")
-        STP = b("111")
+        JMP = 0   # 000
+        JRP = 1   # 100
+        LDN = 2   # 010
+        STO = 3   # 110
+        SUB = 4   # 001
+        SUB2 = 5  # 101
+        CMP = 6   # 011
+        STP = 7   # 111
         NUM = None
 
     instructions_with_data = (

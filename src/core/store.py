@@ -34,9 +34,8 @@ class Store:
 
     def clear(self):
         """Fill the entire store with zeros"""
-        empty_line = BitArray(self._word_length)
         self._store = [
-            empty_line for _ in range(0, self._word_count)
+            BitArray(self._word_length) for _ in range(0, self._word_count)
         ]
 
     def __str__(self) -> str:

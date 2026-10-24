@@ -1,7 +1,6 @@
 
 from abc import ABC, abstractmethod
 from threading import Event
-from typing import Optional
 
 
 class MachineRuntimeError(Exception):
@@ -19,7 +18,7 @@ class AbstractMachine(ABC):
         ...
 
     @abstractmethod
-    def start(self, stop_event: Optional[Event] = None):
+    def start(self, stop_event: Event):
         """Start the machine until stop condition is met or stop is requested externally
         """
         ...
