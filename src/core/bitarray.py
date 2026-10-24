@@ -1,5 +1,5 @@
 
-from typing import Iterable
+from collections.abc import Iterable
 
 
 class BitArray(list):
@@ -9,7 +9,7 @@ class BitArray(list):
     """
 
     def __init__(self, size: int):
-        array = [False for _ in range(0, size)]
+        array = [False] * size
         super().__init__(array)
 
     @classmethod
@@ -18,33 +18,22 @@ class BitArray(list):
 
         Arguments:
             value: integer value to translate
+            digits: number of bits of the resulting array
+
+        Raises:
+            IndexError: when the value does not fit in the given number of bits
         """
-        array = BitArray(digits)
+        if not -pow(2, digits) <= value < pow(2, digits):
+            raise IndexError(f"Value {value} does not fit in {digits} bits")
 
-        # Positive value: regular conversion
-        if value >= 0:
-            # Binary transcription (note it is right-to-left in Python)
-            bits = bin(value).split("0b")[1]
+        # Negative values are stored in two's complement form
+        if value < 0:
+            value += pow(2, digits)
 
-            # Padding with zeros
-            while len(bits) < digits:
-                bits = '0' + bits
-
-            # Reverse bits and write them in a BitArray
-            bits = list(bits)
-            bits.reverse()
-            array.engrave(0, map(lambda b: b != '0', bits))
-
-        # Negative value: two's complement
-        else:
-            # TODO: test that
-            # Compute two's complements
-            bits = bin(-value - pow(2, digits)).split("0b")[1]
-
-            # Reverse bits and write them in a BitArray
-            bits = list(bits)
-            bits.reverse()
-            array.engrave(0, map(lambda b: b != '0', bits))
+        # Write the bits, least significant one first
+        array = cls(digits)
+        for i in range(digits):
+            array[i] = bool(value & (1 << i))
 
         return array
 
@@ -79,39 +68,20 @@ class BitArray(list):
 
         return array
 
-    def _twos_complement(self, value: int, bits: int) -> int:
-        """compute the two's complement of integer value"""
-        if (value & (1 << (bits - 1))) != 0: # if sign bit is set e.g., 8bit: 128-255
-            value = value - (1 << bits)      # compute negative value
-        return value                         # return positive value as is
-
     def to_int(self) -> int:
-        """Get the integer value of the binary in SSEM format (from left to right)"""
-        # Copy the list
-        bits = list(self)
+        """Get the signed value of the binary in SSEM format (from left to right)"""
+        value = self.to_unsigned_int()
 
-        # Reverse bit order
-        bits.reverse()
+        # Interpret the most significant bit as a sign (two's complement)
+        if value & (1 << (len(self) - 1)):
+            value -= 1 << len(self)
 
-        # Convert to 0 and 1 string
-        bits = "0b" + ''.join(['1' if b else '0' for b in bits])
-
-        # Convert to int
-        return self._twos_complement(int(bits, 2), len(self))
+        return value
 
     def to_unsigned_int(self) -> int:
-        """Get the integer value of the binary in SSEM format (from left to right)"""
-        # Copy the list
-        bits = list(self)
-
-        # Reverse bit order
-        bits.reverse()
-
-        # Convert to 0 and 1 string
-        bits = "0b" + ''.join(['1' if b else '0' for b in bits])
-
-        # Convert to int
-        return int(bits, 2)
+        """Get the unsigned value of the binary in SSEM format (from left to right)"""
+        # The first bit of the array is the least significant one
+        return sum(bit << i for i, bit in enumerate(self))
 
     def engrave(self, index: int, other):
         """Prints the bits of the given array to the current one at the given position
@@ -149,8 +119,6 @@ class BitArray(list):
 
 def b(value, digits: int=None) -> BitArray:
     """Convert a value to a BitArray"""
-    from collections.abc import Iterable
-
     if isinstance(value, int):
         return BitArray.from_int(value, digits=digits)
     elif isinstance(value, str):

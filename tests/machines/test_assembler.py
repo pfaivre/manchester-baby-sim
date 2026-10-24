@@ -1,3 +1,4 @@
+import tempfile
 from enum import Enum
 from pathlib import Path
 from unittest import TestCase
@@ -31,6 +32,21 @@ class TestAssembler(TestCase):
             I = None
         self.mock_model.Mnemonic = SampleMnemonic
 
+    def _temp_file(self, content: str, suffix: str = ".asm") -> Path:
+        """Write the given content to a temporary file and return its path"""
+        tmpdir = tempfile.TemporaryDirectory()
+        self.addCleanup(tmpdir.cleanup)
+        path = Path(tmpdir.name) / f"program{suffix}"
+        path.write_text(content)
+        return path
+
+    def _real_assembler(self) -> Assembler:
+        """Assembler operating on the real SSEM model"""
+        return Assembler(model=SsemModel())
+
+    def _real_store(self) -> Store:
+        return Store(SsemModel.word_length, SsemModel.word_count)
+
     def test_load_file(self):
         # Test case: asm file
         # Arrange
@@ -63,11 +79,127 @@ class TestAssembler(TestCase):
         with self.assertRaises(AssemblerError):
             Assembler.load_file(mock_self, Path("some_path"), mock_store)
 
+    def test_load_file_from_disk(self):
+        """load_file guesses the format from the content and dispatches accordingly"""
+        assembler = self._real_assembler()
+
+        # Test case: asm file
+        store = self._real_store()
+        assembler.load_file(self._temp_file("00 LDN 20\n01 STP\n"), store)
+        self.assertEqual(store[0], b("00101000000000100000000000000000"), "00 LDN 20")
+
+        # Test case: snp file
+        store = self._real_store()
+        assembler.load_file(self._temp_file("0000: 11111000000000100000000000000000\n", suffix=".snp"), store)
+        self.assertEqual(store[0], b("11111000000000100000000000000000"))
+
+    def test_load_file_not_found(self):
+        assembler = self._real_assembler()
+        with self.assertRaises(AssemblerError):
+            assembler.load_file(Path("this_file_does_not_exist.asm"), self._real_store())
+
+    def test_load_file_directory(self):
+        tmpdir = tempfile.TemporaryDirectory()
+        self.addCleanup(tmpdir.cleanup)
+        assembler = self._real_assembler()
+        with self.assertRaises(AssemblerError):
+            assembler.load_file(Path(tmpdir.name), self._real_store())
+
+    def test_load_file_unknown_format(self):
+        assembler = self._real_assembler()
+        with self.assertRaises(AssemblerError):
+            assembler.load_file(self._temp_file("foo bar\n"), self._real_store())
+
     def test_load_asm(self):
-        pass
+        """A valid assembly program is written word by word into the store"""
+        program = "\n".join([
+            "; Addition program",
+            "00 LDN 04    ; A = -X",
+            "01 SUB 05    ; A = A - Y",
+            "02 STO 06    ; R = A",
+            "03 STP",
+            "",
+            "04 NUM 3",
+            "05 NUM 4",
+            "06 NUM -5",
+        ])
+        assembler = self._real_assembler()
+        store = self._real_store()
+        store[10] = b("11111111111111111111111111111111")  # Pre-existing content
+
+        assembler.load_asm(self._temp_file(program), store)
+
+        # Instructions: 5-bit operand at bit 0, 3-bit opcode at bit 13
+        self.assertEqual(store[0], b("00100000000000100000000000000000"), "00 LDN 04")
+        self.assertEqual(store[1], b("10100000000000010000000000000000"), "01 SUB 05")
+        self.assertEqual(store[2], b("01100000000001100000000000000000"), "02 STO 06")
+        self.assertEqual(store[3], b("00000000000001110000000000000000"), "03 STP")
+
+        # Numbers, written as two's complement
+        self.assertEqual(store[4], b("11000000000000000000000000000000"), "04 NUM 3")
+        self.assertEqual(store[5], b("00100000000000000000000000000000"), "05 NUM 4")
+        self.assertEqual(store[6], b("11011111111111111111111111111111"), "06 NUM -5")
+
+        # Lines absent from the program are cleared
+        self.assertEqual(store[10], b("00000000000000000000000000000000"), "Cleared")
+
+    def test_load_asm_errors(self):
+        test_suite = {
+            "address not numeric":      "zero LDN 20\n",
+            "address out of sequence":  "01 LDN 20\n",
+            "invalid mnemonic":         "00 LOADX 20\n",
+            "missing mnemonic":         "00\n",
+            "missing data":             "00 LDN\n",
+            "data not numeric":         "00 LDN twenty\n",
+            "data out of address range": "00 LDN 32\n",
+            "number too large":         "00 NUM 99999999999\n",
+            "too many words":           "".join(f"{i:02d} STP\n" for i in range(33)),
+        }
+
+        assembler = self._real_assembler()
+        for name, program in test_suite.items():
+            with self.subTest(name):
+                store = self._real_store()
+                with self.assertRaises(AssemblerError):
+                    assembler.load_asm(self._temp_file(program), store)
 
     def test_load_snp(self):
-        pass
+        """A valid binary dump is written word by word into the store"""
+        program = "\n".join([
+            "; A comment",
+            "",
+            "0000: 00000000000000000000000000000000",
+            "0001: 11111000000000100000000000000000 ; Some comment",
+            "0002: 01111000000001100000000000000000",
+        ])
+        assembler = self._real_assembler()
+        store = self._real_store()
+        store[5] = b("11111111111111111111111111111111")  # Pre-existing content
+
+        assembler.load_snp(self._temp_file(program, suffix=".snp"), store)
+
+        self.assertEqual(store[0], b("00000000000000000000000000000000"))
+        self.assertEqual(store[1], b("11111000000000100000000000000000"))
+        self.assertEqual(store[2], b("01111000000001100000000000000000"))
+
+        # Lines absent from the dump are cleared
+        self.assertEqual(store[5], b("00000000000000000000000000000000"), "Cleared")
+
+    def test_load_snp_errors(self):
+        test_suite = {
+            "address out of sequence": "0005: " + "0" * 32 + "\n",
+            "missing word":            "0000\n",
+            "word too long":           "0000: " + "0" * 33 + "\n",
+            "word too short":          "0000: 0101\n",
+            "too many words":          "".join(f"{i:04d}: " + "0" * 32 + "\n" for i in range(33)),
+        }
+
+        assembler = self._real_assembler()
+        for name, program in test_suite.items():
+            with self.subTest(name):
+                store = self._real_store()
+                with self.assertRaises(AssemblerError):
+                    assembler.load_snp(self._temp_file(program, suffix=".snp"), store)
 
     def test__guess_file_format(self):
         mock_self = MagicMock(spec=Assembler)
@@ -151,4 +283,6 @@ foo bar
                 self.assertEqual(result, expected_output)
 
     def test_disassemble(self):
-        pass
+        """Disassembly is not implemented yet"""
+        with self.assertRaises(NotImplementedError):
+            self._real_assembler().disassemble(self._real_store())

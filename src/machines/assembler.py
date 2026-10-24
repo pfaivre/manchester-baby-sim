@@ -58,17 +58,14 @@ class Assembler:
                     if address != counter:
                         raise ValueError
                 except ValueError as ex:
-                    print(line)
                     raise AssemblerError(f"Error: invalid address, expected {counter:02d}\n")
 
                 # Mnemonic
                 try:
                     mnemonic = self.model.Mnemonic[parts[1]]
                 except KeyError:
-                    print(line)
                     raise AssemblerError(f"Error: invalid mnemonic '{parts[1]}'\n")
                 except IndexError:
-                    print(line)
                     raise AssemblerError(f"Error: missing mnemonic\n")
 
                 # Data
@@ -79,14 +76,11 @@ class Assembler:
 
                         if mnemonic in self.model.instructions_data_is_address:
                             if not 0 <= data < store_tmp.word_count:
-                                print(line)
                                 raise AssemblerError(f"Error: '{mnemonic.name}' instruction requires a valid address (from 0 to {store.word_count-1})\n")
 
                     except IndexError:
-                        print(line)
                         raise AssemblerError(f"Error: missing data for '{mnemonic.name}' instruction\n")
                     except ValueError:
-                        print(line)
                         raise AssemblerError(f"Error: '{mnemonic.name}' instruction requires a numeric value\n")
 
                 # Write the line to the store
@@ -97,7 +91,6 @@ class Assembler:
                         data_bits = BitArray.from_int(data, store_tmp.word_length)
                         word.engrave(0, data_bits)
                     except IndexError:
-                        print(line)
                         raise AssemblerError("Error: Number is too large, not enough space to store binary value\n")
                 else:
                     # Write data
@@ -108,13 +101,11 @@ class Assembler:
                         # Write op code
                         word.engrave(self.model.opcode_start, BitArray.from_int(mnemonic.value, self.model.opcode_length))
                     except IndexError:
-                        print(line)
                         raise AssemblerError("Error: Number is too large, not enough space to store binary value\n")
 
                 try:
                     store_tmp[counter] = word
                 except IndexError:
-                    print(line)
                     raise AssemblerError(f"Too many words for this machine (highest address is {store.word_count-1})\n")
 
                 counter += 1
@@ -132,7 +123,6 @@ class Assembler:
         )
 
         counter = 0
-        error = False
 
         with open(file, "r") as file:
             for line in file:
@@ -149,34 +139,23 @@ class Assembler:
                     if address != counter:
                         raise ValueError
                 except ValueError:
-                    print(line)
-                    print(f"Error: invalid address, expected {counter:02d}\n")
-                    error = True
+                    raise AssemblerError(f"Error: invalid address, expected {counter:02d}\n")
 
                 # Word
                 try:
                     word = b(parts[1])
                 except IndexError:
-                    print(line)
-                    print(f"Error: missing word\n")
-                    error = True
+                    raise AssemblerError(f"Error: missing word\n")
 
                 if len(word) != store.word_length:
-                    print(line)
-                    print(f"Error: word has a wrong length (got {len(word)}, expected {store.word_length}\n")
-                    error = True
+                    raise AssemblerError(f"Error: word has a wrong length (got {len(word)}, expected {store.word_length}\n")
 
                 try:
                     store_tmp[counter] = word
                 except IndexError:
-                    print(line)
-                    print(f"Too many words for this machine (highest address is {store.word_count-1})\n")
-                    error = True
+                    raise AssemblerError(f"Too many words for this machine (highest address is {store.word_count-1})\n")
 
                 counter += 1
-
-        if error:
-            raise AssemblerError("Errors have been found in assembly program")
 
         # Finally, write the store
         for address, word in enumerate(store_tmp):
