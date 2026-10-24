@@ -10,6 +10,12 @@ from src.machines.assembler import Assembler
 from src.machines.ssemmodel import SsemModel
 
 
+# Instructions are grouped in batches lasting at least this long, so the
+# overshoot of sleep() (in the same order of magnitude as the period of a
+# single instruction) is amortized over the batch
+BATCH_DURATION = 0.02  # seconds
+
+
 class Ssem(AbstractMachine):
     """Simulator for the original Small-Scale Experimental Machine (SSEM), a.k.a. Manchester Baby built in 1948
 
@@ -131,15 +137,36 @@ class Ssem(AbstractMachine):
         self.stop_flag = stopped
 
         while not stop_event.is_set():
+            next_deadline = perf_counter()
+
             while not self.stop_flag:
-                start = perf_counter()
+                period = 1 / self.speed
+                batch_size = max(1, int(BATCH_DURATION / period))
+                deadline = next_deadline + batch_size * period
 
-                self.instruction_cycle()
+                for _ in range(batch_size):
+                    self.instruction_cycle()
 
-                if stop_event.is_set():
-                    return
+                    if stop_event.is_set():
+                        return
+                    if self.stop_flag:
+                        break
 
-                sleep(max(0, (1 / self.speed) - (perf_counter() - start)))
+                if self.stop_flag:
+                    break
+
+                # Wait until the absolute deadline of the batch, so that
+                # sleep() overshoot does not accumulate over time
+                now = perf_counter()
+                if deadline < now:
+                    # Execution fell behind schedule (e.g. speed set beyond
+                    # what the machine can deliver): resynchronize instead
+                    # of drifting further or catching up in a burst
+                    next_deadline = now + batch_size * period
+                else:
+                    sleep(deadline - now)
+                    next_deadline = deadline
+
             sleep(0.1)
 
     def clear_memory(self):

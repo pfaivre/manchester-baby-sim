@@ -2,6 +2,7 @@
 from threading import Event
 from time import sleep
 from timeit import default_timer as timer
+from math import exp
 from curses import wrapper
 import curses
 
@@ -146,6 +147,8 @@ class CommandInterface:
         position = self._add_text(bottom_bar, position, " DISPLAY  ")
 
         refresh_frequency = 30  # refreshs per seconds
+        speed_smoothing = 0.5  # seconds of memory of the displayed speed
+        current_speed = 0.0
         last_cycles = 0
         last_refresh_time = timer()
 
@@ -154,10 +157,19 @@ class CommandInterface:
 
             # //// TOP BAR ////
             status = "RUNNING" if self.machine.is_running else "STOPPED"
-            current_speed = int((self.machine.last_cycle - last_cycles) / (timer() - last_refresh_time))
+            now = timer()
+            elapsed = now - last_refresh_time
+            if self.machine.is_running:
+                # Exponentially smoothed speed, so a single noisy refresh
+                # window does not make the display jump around
+                measured = (self.machine.last_cycle - last_cycles) / elapsed
+                alpha = 1 - exp(-elapsed / speed_smoothing)
+                current_speed += alpha * (measured - current_speed)
+            else:
+                current_speed = 0.0
             last_cycles = self.machine.last_cycle
-            last_refresh_time = timer()
-            s = f"[ STATUS: {status} ]  [ CYCLES: {last_cycles} ]  [ {self.machine.last_instruction} ]  [ SPEED: {current_speed:2d}/{self.machine.speed} ips ] "
+            last_refresh_time = now
+            s = f"[ STATUS: {status} ]  [ CYCLES: {last_cycles} ]  [ {self.machine.last_instruction} ]  [ SPEED: {int(current_speed):2d}/{self.machine.speed} ips ] "
             top_bar.addstr(0, 0, s, curses.color_pair(4))
 
             # //// THE STORE ////

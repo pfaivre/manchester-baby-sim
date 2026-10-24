@@ -31,9 +31,9 @@ The result will appear on the 28th line in binary.
   - [x] Fix visual bugs
 - [ ] Improve interactive interface
   - [ ] Handle screen resize
-  - [ ] Accurate speed execution
+  - [x] Accurate speed execution
   - [ ] Help window
-- [ ] Unit and functional tests (partially done)
+- [x] Unit and functional tests
 - [ ] Implement breakpoints: automatically stop at a given condition
 - [ ] Implement other machines with this engine
 - [ ] Save user preferences
