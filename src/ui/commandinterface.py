@@ -24,6 +24,24 @@ class CommandInterface:
         {True: "1", False: "0"},  # 0s and 1s
     )
 
+    # Keys of the interface: (key, bottom bar legend, help description), in
+    # the order they appear in the legend and in the help pop-up. Both are
+    # built from this table, so they cannot drift apart. Keys whose legend
+    # is None (the arrow keys) only appear in the pop-up.
+    KEYMAP = (
+        ("Q", "QUIT", "Quit the simulator"),
+        ("P", "RUN/STOP", "Run the program or pause it"),
+        ("F10", "STEP", "Execute one instruction"),
+        ("↑/↓", None, "Scroll the store view"),
+        ("I", "SPEED UP", "Increase the execution speed"),
+        ("K", "SPEED DOWN", "Decrease the execution speed"),
+        ("D", "DISPLAY", "Cycle the bit representations"),
+        ("H", "HELP", "Toggle this help pop-up"),
+    )
+
+    HELP_TITLE = "SSEM SIMULATOR"
+    HELP_FOOTER = "Press H to close"
+
     SPEED_DISPLAY_PERIOD = 0.5  # seconds between updates of the displayed speed
 
     PAIR_STORE = 1  # Bits and registers (green)
@@ -43,6 +61,7 @@ class CommandInterface:
         self.last_refresh_time = timer()
         self.dirty = True  # The first frame must be drawn
         self.last_drawn_cycle = 0
+        self.help_window = None  # The help pop-up window, None while closed
 
     def _add_text(self, window, position: int, text: str, attributes = None) -> int:
         """Helper to chain multiple string prints to a window
@@ -74,7 +93,7 @@ class CommandInterface:
         curses.flushinp()  # Avoid queuing key presses
 
         # //// QUIT ////
-        if c == ord('q'):
+        if c == ord('q') or c == 27:  # 27 is Esc, for which curses defines no KEY_ constant
             self.stop_event.set()
 
         # //// SPEED DOWN ////
@@ -119,6 +138,13 @@ class CommandInterface:
         # //// DISPLAY ////
         elif c == ord("d"):
             self.current_bit_representation = (self.current_bit_representation + 1) % len(self.BIT_REPRESENTATIONS)
+
+        # //// HELP ////
+        elif c == ord("h"):
+            if self.help_window is None:
+                self._create_help_window(stdscr)
+            else:
+                self._close_help_window()
 
     def _word_str(self, word: BitArray) -> str:
         """Represents a word according to the current style
@@ -203,32 +229,38 @@ class CommandInterface:
         max_scroll = max(0, self.main_panel_height - lines)
         self.store_scroll = max(0, min(self.store_scroll, max_scroll))
 
+        # The help pop-up depends on the terminal size: rebuild it if open
+        if self.help_window is not None:
+            self._create_help_window(stdscr)
+
         if not self.terminal_too_small:
             self._draw_bottom_bar()
+
+    def _legend_segments(self):
+        """The bottom bar segments built from KEYMAP: (text, highlighted)
+
+        Single-character keys are padded like " Q ", longer ones ("F10")
+        are drawn as-is.
+        """
+        segments = []
+        for key, legend, _ in self.KEYMAP:
+            if legend is None:
+                continue
+            key_text = f" {key} " if len(key) == 1 else key
+            segments.append((key_text, True))
+            segments.append((f" {legend}  ", False))
+        return segments
 
     def _draw_bottom_bar(self):
         """Draw the key legend on the bottom bar
 
+        The legend is built from KEYMAP, the same table as the help pop-up.
         Legend segments that do not fit in the terminal width are skipped
         entirely: drawing them anyway would make addstr error.
         """
-        keys = (
-            (" Q ", True),
-            (" QUIT  ", False),
-            (" P ", True),
-            (" RUN/STOP  ", False),
-            ("F10", True),
-            (" STEP  ", False),
-            (" I ", True),
-            (" SPEED UP  ", False),
-            (" K ", True),
-            (" SPEED DOWN  ", False),
-            (" D ", True),
-            (" DISPLAY  ", False),
-        )
         _, cols = self.bottom_bar.getmaxyx()
         position = 0
-        for text, highlighted in keys:
+        for text, highlighted in self._legend_segments():
             # The last cell of the window's single line makes addstr error,
             # so a segment must end at least one column short of the edge
             if position + len(text) > cols - 1:
@@ -239,6 +271,98 @@ class CommandInterface:
                 )
             else:
                 position = self._add_text(self.bottom_bar, position, text)
+
+    def _help_key_column(self) -> int:
+        """Width of the highlighted key column in the help pop-up
+
+        The widest key plus one space on each side, so every label sits
+        centered in its reverse box, away from the description.
+        """
+        return max(len(key) for key, _, _ in self.KEYMAP) + 2
+
+    def _help_window_geometry(self, lines: int, cols: int) -> tuple[int, int, int, int]:
+        """Height, width, y and x of the help pop-up for a terminal size
+
+        The pop-up is centered, and clamped to the terminal: on a small
+        terminal its drawing is truncated rather than overflowing.
+        """
+        key_column = self._help_key_column()
+        content_width = max(
+            len(self.HELP_TITLE),
+            len(self.HELP_FOOTER),
+            key_column + 1 + max(len(description) for _, _, description in self.KEYMAP),
+        )
+        # 2 border columns, one left margin and one spare column before the
+        # right border: no text can then reach the last cell of a line
+        width = content_width + 4
+        # Interior lines: title, blank, one line per key, blank, footer
+        height = len(self.KEYMAP) + 6
+        height, width = min(height, lines), min(width, cols)
+        return height, width, max(0, (lines - height) // 2), max(0, (cols - width) // 2)
+
+    def _create_help_window(self, stdscr):
+        """(Re)create the help pop-up window, centered on the terminal
+
+        Called when the pop-up opens and again on every resize while it is
+        open, since its size and position depend on the terminal. The
+        window is built from KEYMAP, the same table as the bottom bar
+        legend, and truncated when the terminal cannot fit it.
+        """
+        lines, cols = stdscr.getmaxyx()
+        height, width, y, x = self._help_window_geometry(lines, cols)
+        key_column = self._help_key_column()
+        window = curses.newwin(height, width, y, x)
+        self.help_window = window
+
+        # The window can fill the whole terminal when clamped: its
+        # bottom-right corner is then the last cell of the last line, where
+        # writing makes addstr error, so box() is guarded like every write
+        try:
+            window.box()
+        except curses.error:
+            pass  # Degenerated terminal: keep whatever border was drawn
+
+        def add_line(row, col, text, attributes=None):
+            """Write one line of the pop-up, clipped to the interior"""
+            if row > height - 2 or col >= width - 1:
+                return
+            text = text[:width - 2 - col]
+            try:
+                if attributes:
+                    window.addstr(row, col, text, attributes)
+                else:
+                    window.addstr(row, col, text)
+            except curses.error:
+                pass  # Degenerated terminal: draw what fits, ignore the rest
+
+        # Title, centered on the window
+        add_line(1, max(1, (width - len(self.HELP_TITLE)) // 2), self.HELP_TITLE, curses.A_BOLD)
+
+        # One line per key: the key centered in its box, the description
+        # following
+        for i, (key, _, description) in enumerate(self.KEYMAP):
+            if 3 + i >= height - 2:
+                break  # No interior room left: the rest is truncated away
+            add_line(3 + i, 1, f"{key:^{key_column}}", curses.A_REVERSE | curses.color_pair(self.PAIR_UI))
+            add_line(3 + i, 2 + key_column, description)
+
+        if height > 3:
+            add_line(height - 2, 1, self.HELP_FOOTER)
+
+    def _close_help_window(self):
+        """Erase the pop-up from the virtual screen and drop it
+
+        The pop-up can extend beyond the store pad — to its right, and over
+        the bottom bar — and no other window repaints those regions, so its
+        rectangle must be blanked by the window itself. The bottom bar is
+        only touched at setup: it needs a touchwin to copy its legend back
+        over the blanked row. The dirty flag set by the key press makes the
+        next frame redraw the store over the rest of the erased area.
+        """
+        self.help_window.erase()
+        self.help_window.noutrefresh()
+        self.help_window = None
+        self.bottom_bar.touchwin()
 
     def _update_displayed_speed(self):
         """Exponentially smooth the execution speed shown in the top bar
@@ -348,6 +472,15 @@ class CommandInterface:
         self.pad.noutrefresh(self.store_scroll,0, 0,0, lines-2,cols-1 )
         self.top_bar.noutrefresh()
         self.bottom_bar.noutrefresh()
+        # The pop-up is composed last: the pad covers the whole store area,
+        # and a window refresh copies its entire rectangle to the virtual
+        # screen, so composing it earlier would leave it painted over.
+        # A refresh only copies the lines touched since the window's last
+        # refresh, and the pad repaints its own lines at every frame:
+        # touchwin forces the full copy, keeping the pop-up on top
+        if self.help_window is not None:
+            self.help_window.touchwin()
+            self.help_window.noutrefresh()
         curses.doupdate()
 
     def _go(self, stdscr):
@@ -385,6 +518,14 @@ class CommandInterface:
             sleep(1 / refresh_frequency)
 
     def run_interface(self):
+        # With keypad mode on, ncurses holds a lone Esc for the escape
+        # sequence completion delay (ESCDELAY, 1s by default) before
+        # returning it as a key press, and that wait ignores nodelay: the
+        # interface would freeze for a second on Esc, with the Esc finally
+        # delivered on the next key press. A short delay keeps Esc snappy
+        # while leaving arrow-key sequences (written by the terminal in one
+        # piece) unaffected
+        curses.set_escdelay(25)
         try:
             wrapper(self._go)
         except InterfaceError as ex:

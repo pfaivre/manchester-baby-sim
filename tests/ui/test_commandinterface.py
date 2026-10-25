@@ -1,5 +1,5 @@
 from threading import Event
-from unittest import TestCase
+from unittest import TestCase, mock
 
 from src.core.bitarray import BitArray
 from src.machines.ssem import Ssem
@@ -59,3 +59,37 @@ class TestCommandInterface(TestCase):
 
         self.interface.dirty = True
         self.assertTrue(self.interface._needs_redraw(), "A key was pressed")
+
+    def test_legend_segments_follow_keymap(self):
+        """The bottom bar legend is built from KEYMAP, without the pop-up-only keys"""
+        keys = [text for text, highlighted in self.interface._legend_segments() if highlighted]
+        expected = [
+            f" {key} " if len(key) == 1 else key
+            for key, legend, _ in CommandInterface.KEYMAP
+            if legend is not None
+        ]
+        self.assertEqual(keys, expected)
+
+    def test_help_window_geometry(self):
+        """The pop-up is sized from KEYMAP, centered, and clamped to the terminal"""
+        height, width, y, x = self.interface._help_window_geometry(50, 120)
+        self.assertEqual(height, len(CommandInterface.KEYMAP) + 6)
+        self.assertEqual(y, (50 - height) // 2)
+        self.assertEqual(x, (120 - width) // 2)
+        # The widest help line fits with its margins and borders
+        widest = max(len(description) for _, _, description in CommandInterface.KEYMAP)
+        self.assertGreaterEqual(width, widest + 8)
+
+        # A small terminal clamps the pop-up instead of overflowing it
+        self.assertEqual(self.interface._help_window_geometry(10, 20), (10, 20, 0, 0))
+
+    def test_escape_quits(self):
+        """Esc quits the application, like Q"""
+        class FakeScreen:
+            def getch(self):
+                return 27  # Esc
+
+        # flushinp needs an initialized curses screen, unavailable in a test
+        with mock.patch("curses.flushinp"):
+            self.interface._handle_input(FakeScreen())
+        self.assertTrue(self.interface.stop_event.is_set())

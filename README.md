@@ -29,11 +29,11 @@ The result will appear on the 28th line in binary.
   - [x] Display modes
   - [x] Scroll in store with arrows when terminal is too small
   - [x] Fix visual bugs
-- [ ] Improve interactive interface
+- [x] Improve interactive interface
   - [x] Handle screen resize
   - [x] Accurate speed execution
   - [x] Intrepret what is stored in each line
-  - [ ] Help window
+  - [x] Help window
 - [x] Unit and functional tests
 - [ ] Implement breakpoints: automatically stop at a given condition
 - [ ] Implement other machines with this engine
