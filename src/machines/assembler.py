@@ -221,7 +221,6 @@ class Assembler:
         except ValueError:
             raise AssemblerError(f"Error: Opcode '{opcode}' not recognized")
 
-
         return (command, data)
 
     def disassemble(self, store: Store) -> str:

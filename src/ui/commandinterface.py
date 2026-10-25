@@ -41,6 +41,8 @@ class CommandInterface:
         self.last_speed_refresh = timer()
         self.last_cycles = 0
         self.last_refresh_time = timer()
+        self.dirty = True  # The first frame must be drawn
+        self.last_drawn_cycle = 0
 
     def _add_text(self, window, position: int, text: str, attributes = None) -> int:
         """Helper to chain multiple string prints to a window
@@ -58,6 +60,9 @@ class CommandInterface:
 
         if c == -1:  # No key pressed (getch is in nodelay mode)
             return
+
+        # Any key press may have changed the display
+        self.dirty = True
 
         # //// RESIZE ////
         # Handled before flushinp, so that a resize event queued together
@@ -143,7 +148,7 @@ class CommandInterface:
             command, data = self.machine.assembler.decode_instruction(word)
         except AssemblerError:
             return "?"
-        return f"{command.name} {data:02d}"
+        return f"{command.name:4} {data:02d}"
 
     def _on_resize(self, stdscr):
         """Adapt the interface to a resized terminal
@@ -156,6 +161,16 @@ class CommandInterface:
         curses.LINES, curses.COLS = stdscr.getmaxyx()
         self._setup_windows(stdscr)
         self._draw_screen(stdscr)
+
+    def _minimum_width(self) -> int:
+        """The terminal width needed to display the store in its full width
+
+        After the bits and the pointer, the display carries the index, the
+        value and the interpretation (1 separator + 25 characters), plus
+        one spare column: the text of the last store line must stay away
+        from the last cell of the pad, where addstr would return an error.
+        """
+        return self.machine.store.word_length + 27
 
     def _setup_windows(self, stdscr):
         """(Re)create the windows to fit the current terminal size
@@ -172,15 +187,16 @@ class CommandInterface:
         # KEY_RESIZE event reaches us, and writing outside the real window
         # makes the addstr/refresh calls return an error
         lines, cols = stdscr.getmaxyx()
-        self.terminal_too_small = lines < 12 or cols < 80
 
-        self.top_bar = curses.newwin(0, 0, 0, 0)
-        self.bottom_bar = curses.newwin(0, 0, lines - 1, 0)
+        # The top bar is a single line: a full-screen window would wipe the
+        # store area from the virtual screen on its first refresh, since a
+        # fresh window copies all its blank lines, not only the written ones
+        self.top_bar = curses.newwin(1, 0, 0, 0)
+        self.bottom_bar = curses.newwin(1, 0, lines - 1, 0)
 
         self.main_panel_height = self.machine.store.word_count + 4  # The store height + CI + A + empty line
-        # Store width + margin, wide enough for the index, value and
-        # interpretation columns drawn after the bits
-        self.main_panel_width = self.machine.store.word_length + 27
+        self.main_panel_width = self._minimum_width()
+        self.terminal_too_small = lines < 12 or cols < self.main_panel_width
         self.pad = curses.newpad(self.main_panel_height, self.main_panel_width)
 
         # Keep the visible part of the store within its content
@@ -192,20 +208,37 @@ class CommandInterface:
 
     def _draw_bottom_bar(self):
         """Draw the key legend on the bottom bar
+
+        Legend segments that do not fit in the terminal width are skipped
+        entirely: drawing them anyway would make addstr error.
         """
+        keys = (
+            (" Q ", True),
+            (" QUIT  ", False),
+            (" P ", True),
+            (" RUN/STOP  ", False),
+            ("F10", True),
+            (" STEP  ", False),
+            (" I ", True),
+            (" SPEED UP  ", False),
+            (" K ", True),
+            (" SPEED DOWN  ", False),
+            (" D ", True),
+            (" DISPLAY  ", False),
+        )
+        _, cols = self.bottom_bar.getmaxyx()
         position = 0
-        position = self._add_text(self.bottom_bar, position, " Q ", curses.A_REVERSE | curses.color_pair(self.PAIR_UI))
-        position = self._add_text(self.bottom_bar, position, " QUIT  ")
-        position = self._add_text(self.bottom_bar, position, " P ", curses.A_REVERSE | curses.color_pair(self.PAIR_UI))
-        position = self._add_text(self.bottom_bar, position, " RUN/STOP  ")
-        position = self._add_text(self.bottom_bar, position, "F10", curses.A_REVERSE | curses.color_pair(self.PAIR_UI))
-        position = self._add_text(self.bottom_bar, position, " STEP  ")
-        position = self._add_text(self.bottom_bar, position, " I ", curses.A_REVERSE | curses.color_pair(self.PAIR_UI))
-        position = self._add_text(self.bottom_bar, position, " SPEED UP  ")
-        position = self._add_text(self.bottom_bar, position, " K ", curses.A_REVERSE | curses.color_pair(self.PAIR_UI))
-        position = self._add_text(self.bottom_bar, position, " SPEED DOWN  ")
-        position = self._add_text(self.bottom_bar, position, " D ", curses.A_REVERSE | curses.color_pair(self.PAIR_UI))
-        position = self._add_text(self.bottom_bar, position, " DISPLAY  ")
+        for text, highlighted in keys:
+            # The last cell of the window's single line makes addstr error,
+            # so a segment must end at least one column short of the edge
+            if position + len(text) > cols - 1:
+                break
+            if highlighted:
+                position = self._add_text(
+                    self.bottom_bar, position, text, curses.A_REVERSE | curses.color_pair(self.PAIR_UI)
+                )
+            else:
+                position = self._add_text(self.bottom_bar, position, text)
 
     def _update_displayed_speed(self):
         """Exponentially smooth the execution speed shown in the top bar
@@ -232,12 +265,28 @@ class CommandInterface:
         self.last_cycles = self.machine.last_cycle
         self.last_refresh_time = now
 
+    def _needs_redraw(self) -> bool:
+        """Tell whether the current frame must be drawn
+
+        The display only changes when a key was pressed or when the machine
+        moved: every state change goes through an instruction cycle, which
+        bumps last_cycle. While the machine is stopped and idle, frames are
+        skipped entirely.
+        """
+        return self.dirty or self.machine.last_cycle != self.last_drawn_cycle
+
     def _draw_screen(self, stdscr):
         """Draw the whole interface in a single pass
 
         Called on every refresh and right after a terminal resize, so that a
         resize appears as one atomic screen update instead of a blank frame.
         """
+        # Snapshot the state this frame is drawn from: anything changing
+        # after this point (e.g. the machine executing one more instruction
+        # mid-draw) triggers a redraw on the next frame
+        self.dirty = False
+        self.last_drawn_cycle = self.machine.last_cycle
+
         if self.terminal_too_small:
             # Below the minimum size, only tell the user instead of
             # crashing on overflowing addstr calls
@@ -245,7 +294,7 @@ class CommandInterface:
             try:
                 # cols - 1: writing the very last cell of the last line
                 # makes addstr return an error
-                stdscr.addstr(0, 0, f"Terminal too small: {cols}x{lines}, needs 80x12"[:cols - 1])
+                stdscr.addstr(0, 0, f"Terminal too small: {cols}x{lines}, needs {self.main_panel_width}x12"[:cols - 1])
             except curses.error:
                 pass  # The terminal is too small even for the message
             stdscr.refresh()
@@ -262,7 +311,9 @@ class CommandInterface:
             f"[ {self.machine.last_instruction} ]  "
             f"[ SPEED: {self.displayed_speed:2d}/{self.machine.speed} ips ] "
         )
-        self.top_bar.addstr(0, 0, s[:cols], curses.color_pair(self.PAIR_UI))
+        # cols - 1: the top bar is a single-line window, and writing the
+        # very last cell of the last line makes addstr return an error
+        self.top_bar.addstr(0, 0, s[:cols - 1], curses.color_pair(self.PAIR_UI))
 
         # //// THE STORE ////
         ci_int = self.machine.ci.to_unsigned_int()
@@ -305,9 +356,9 @@ class CommandInterface:
         Args:
             stdscr: Screen instanciated by Curses
         """
-        if curses.LINES < 12 or curses.COLS < 80:
+        if curses.LINES < 12 or curses.COLS < self._minimum_width():
             self.stop_event.set()
-            raise InterfaceError("Terminal size is too small. Need minimum 80x12.")
+            raise InterfaceError(f"Terminal size is too small. Need minimum {self._minimum_width()}x12.")
 
         stdscr.nodelay(True)
         curses.curs_set(0)
@@ -324,7 +375,9 @@ class CommandInterface:
             self._handle_input(stdscr)
 
             self._update_displayed_speed()
-            self._draw_screen(stdscr)
+
+            if self._needs_redraw():
+                self._draw_screen(stdscr)
 
             if self.stop_event.is_set():
                 break
