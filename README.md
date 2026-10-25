@@ -32,6 +32,7 @@ The result will appear on the 28th line in binary.
 - [ ] Improve interactive interface
   - [x] Handle screen resize
   - [x] Accurate speed execution
+  - [x] Intrepret what is stored in each line
   - [ ] Help window
 - [x] Unit and functional tests
 - [ ] Implement breakpoints: automatically stop at a given condition

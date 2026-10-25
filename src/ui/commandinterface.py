@@ -8,6 +8,7 @@ import curses
 
 from src.core.bitarray import BitArray
 from src.machines.abstractmachine import AbstractMachine
+from src.machines.assembler import AssemblerError
 
 
 class InterfaceError(Exception):
@@ -123,6 +124,24 @@ class CommandInterface:
         str_word = [self.BIT_REPRESENTATIONS[self.current_bit_representation][b] for b in word]
         return "".join(map(str, str_word))
 
+    def _word_interpretation(self, word: BitArray) -> str:
+        """Decodes the word as an instruction for the display
+
+        Every word is shown as an instruction, as on the real machine: data
+        words are decoded too (e.g. a negative number reads as STP).
+
+        Args:
+            word (BitArray): Word to decode
+
+        Returns:
+            str: Mnemonic and data, or "?" if the word holds no valid opcode
+        """
+        try:
+            command, data = self.machine.assembler.decode_instruction(word)
+        except AssemblerError:
+            return "?"
+        return f"{command.name} {data:02d}"
+
     def _on_resize(self, stdscr):
         """Adapt the interface to a resized terminal
         """
@@ -150,13 +169,15 @@ class CommandInterface:
         # KEY_RESIZE event reaches us, and writing outside the real window
         # makes the addstr/refresh calls return an error
         lines, cols = stdscr.getmaxyx()
-        self.terminal_too_small = lines < 24 or cols < 80
+        self.terminal_too_small = lines < 12 or cols < 80
 
         self.top_bar = curses.newwin(0, 0, 0, 0)
         self.bottom_bar = curses.newwin(0, 0, lines - 1, 0)
 
         self.main_panel_height = self.machine.store.word_count + 4  # The store height + CI + A + empty line
-        self.main_panel_width = self.machine.store.word_length + 25  # The store width + margin
+        # Store width + margin, wide enough for the index, value and
+        # interpretation columns drawn after the bits
+        self.main_panel_width = self.machine.store.word_length + 27
         self.pad = curses.newpad(self.main_panel_height, self.main_panel_width)
 
         # Keep the visible part of the store within its content
@@ -221,7 +242,7 @@ class CommandInterface:
             try:
                 # cols - 1: writing the very last cell of the last line
                 # makes addstr return an error
-                stdscr.addstr(0, 0, f"Terminal too small: {cols}x{lines}, needs 80x24"[:cols - 1])
+                stdscr.addstr(0, 0, f"Terminal too small: {cols}x{lines}, needs 80x12"[:cols - 1])
             except curses.error:
                 pass  # The terminal is too small even for the message
             stdscr.refresh()
@@ -240,19 +261,32 @@ class CommandInterface:
         ci_int = self.machine.ci.to_unsigned_int()
         a_int = self.machine.a.to_int()
         self.pad.addstr(1, 0, f" {self._word_str(self.machine.ci)}", curses.A_BOLD | curses.color_pair(2))
-        self.pad.addstr(1, self.machine.model.word_length+2, f"CI = {ci_int:11}")
+        self.pad.addstr(1, self.machine.model.word_length+2, f"CI: {ci_int:11}")
         self.pad.addstr(2, 0, f" {self._word_str(self.machine.a)}", curses.A_BOLD | curses.color_pair(2))
-        self.pad.addstr(2, self.machine.model.word_length+2, f"A  = {a_int:11}")
+        self.pad.addstr(2, self.machine.model.word_length+2, f"A : {a_int:11}")
 
         for i, word in enumerate(self.machine.store):
+            pointer = ">" if i == ci_int else " "
+            # The bits keep their color (green, or highlighted on the CI
+            # line); the pointer and the interpretation are drawn in the
+            # default terminal color, in three passes
             if i == ci_int:
-                self.pad.addstr(i+4, 0, f">{self._word_str(word)}", curses.A_BOLD | curses.color_pair(7))
+                bits_color = 0
             else:
-                self.pad.addstr(i+4, 0, f" {self._word_str(word)}", curses.A_BOLD | curses.color_pair(2))
+                bits_color = curses.color_pair(2)
+            self.pad.addstr(i+4, 0, pointer, curses.A_BOLD)
+            self.pad.addstr(i+4, 1, self._word_str(word), curses.A_BOLD | bits_color)
+            self.pad.addstr(i+4, 1 + self.machine.model.word_length, f" {i:02d}: {word.to_int():11}  {self._word_interpretation(word)}")
 
-        self.pad.refresh( self.store_scroll,0, 0,0, lines-2,cols-1 )
-        self.top_bar.refresh()
-        self.bottom_bar.refresh()
+        # Compose the whole frame in the virtual screen, then flush it with a
+        # single physical update: the pad is displayed from screen row 0 and
+        # therefore overlaps the top bar (its first blank line sits under the
+        # bar). With one refresh() per window, each would trigger its own
+        # physical update, blanking and repainting the bar's row every frame
+        self.pad.noutrefresh(self.store_scroll,0, 0,0, lines-2,cols-1 )
+        self.top_bar.noutrefresh()
+        self.bottom_bar.noutrefresh()
+        curses.doupdate()
 
     def _go(self, stdscr):
         """Function to be passed to Curses wrapper function
@@ -260,9 +294,9 @@ class CommandInterface:
         Args:
             stdscr: Screen instanciated by Curses
         """
-        if curses.LINES < 24 or curses.COLS < 80:
+        if curses.LINES < 12 or curses.COLS < 80:
             self.stop_event.set()
-            raise InterfaceError("Terminal size is too small. Need minimum 80x24.")
+            raise InterfaceError("Terminal size is too small. Need minimum 80x12.")
 
         stdscr.nodelay(True)
         curses.curs_set(0)
