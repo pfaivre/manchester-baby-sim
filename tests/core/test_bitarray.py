@@ -154,7 +154,7 @@ class TestBitArray(TestCase):
             "From iterable"
         )
 
-        with self.assertRaises(ValueError):
+        with self.assertRaises(TypeError):
             # FLoat is unsuported
             b(1.1)
 

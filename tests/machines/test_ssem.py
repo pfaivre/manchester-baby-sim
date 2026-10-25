@@ -28,7 +28,10 @@ class TestSsem(TestCase):
         """Build a word containing the given instruction"""
         word = BitArray(SsemModel.word_length)
         word.engrave(SsemModel.address_start, BitArray.from_int(data, SsemModel.address_length))
-        word.engrave(SsemModel.opcode_start, BitArray.from_int(SsemModel.Mnemonic[mnemonic_name].value, SsemModel.opcode_length))
+        word.engrave(
+            SsemModel.opcode_start,
+            BitArray.from_int(SsemModel.Mnemonic[mnemonic_name].value, SsemModel.opcode_length)
+        )
         return word
 
     def test___init__(self):
@@ -42,13 +45,13 @@ class TestSsem(TestCase):
 
     def test___init___with_file(self):
         """A program file given at construction is loaded into the store"""
-        program = "\n".join([
-            "00 NUM 0",
-            "01 LDN 04    ; A = -X",
-            "02 STP",
-            "03 NUM 0",
-            "04 NUM 5",
-        ])
+        program = (
+            "00 NUM 0\n"
+            "01 LDN 04    ; A = -X\n"
+            "02 STP\n"
+            "03 NUM 0\n"
+            "04 NUM 5"
+        )
         ssem = Ssem(file=self._temp_file(program))
 
         self.assertEqual(ssem.store[1], b("00100000000000100000000000000000"), "01 LDN 04")
@@ -85,7 +88,7 @@ class TestSsem(TestCase):
         """A word decoding to a non-instruction mnemonic cannot be executed"""
         # Defensive branch: unreachable through instruction_cycle, since every
         # opcode of the model matches a cased instruction
-        with self.assertRaises(Exception):
+        with self.assertRaises(MachineRuntimeError):
             self.ssem._execute(SsemModel.Mnemonic.NUM, 0)
 
     def test_start_stopped(self):
@@ -104,13 +107,13 @@ class TestSsem(TestCase):
 
     def test_start_stops_on_stp_instruction(self):
         """The machine runs by itself until it meets a STP instruction"""
-        program = "\n".join([
-            "00 NUM 0",
-            "01 LDN 04",
-            "02 STP",
-            "03 NUM 0",
-            "04 NUM 5",
-        ])
+        program = (
+            "00 NUM 0\n"
+            "01 LDN 04\n"
+            "02 STP\n"
+            "03 NUM 0\n"
+            "04 NUM 5"
+        )
         ssem = Ssem(file=self._temp_file(program))
         stop_event = Event()
         thread = Thread(target=ssem.start, kwargs={"stop_event": stop_event})
@@ -130,12 +133,12 @@ class TestSsem(TestCase):
 
     def test_start_stop_event_interrupts(self):
         """An external stop event interrupts a machine running an endless program"""
-        program = "\n".join([
-            "00 NUM 0",
-            "01 JRP 03",
-            "02 STP",
-            "03 NUM -1",
-        ])
+        program = (
+            "00 NUM 0\n"
+            "01 JRP 03\n"
+            "02 STP\n"
+            "03 NUM -1"
+        )
         ssem = Ssem(file=self._temp_file(program))
         stop_event = Event()
         thread = Thread(target=ssem.start, kwargs={"stop_event": stop_event})

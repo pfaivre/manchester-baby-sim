@@ -25,7 +25,7 @@ class TestStore(TestCase):
 
         self.assertEqual(10, store.word_length, "Word length property")
 
-    def test_word_length(self):
+    def test_word_count(self):
         store = Store(12, 13)
 
         self.assertEqual(13, store.word_count, "Word count property")

@@ -6,7 +6,6 @@ from src.machines.assembler import AssemblerError
 from src.machines.ssem import Ssem
 from src.ui.commandinterface import CommandInterface
 
-
 if __name__ == "__main__":
     stop_event = Event()
 
@@ -36,7 +35,7 @@ if __name__ == "__main__":
         thread_machine.join()
         thread_interface.join()
 
-    except Exception as ex:
+    except Exception as ex:  # noqa: BLE001 -- top-level safety net: print the error and stop the threads cleanly
         print(ex, file=sys.stderr)
         stop_event.set()
         thread_machine.join()

@@ -9,7 +9,6 @@ from src.machines.abstractmachine import AbstractMachine, MachineRuntimeError
 from src.machines.assembler import Assembler
 from src.machines.ssemmodel import SsemModel
 
-
 # Instructions are grouped in batches lasting at least this long, so the
 # overshoot of sleep() (in the same order of magnitude as the period of a
 # single instruction) is amortized over the batch
@@ -71,7 +70,7 @@ class Ssem(AbstractMachine):
         # Fetch
         ci_int = self.ci.to_int()
         ci_int += 1
-        ci_int %= self.model.word_count  # Program counter loops back to the begining when it exceeds the store boundaries
+        ci_int %= self.model.word_count  # Program counter loops back to the beginning when it exceeds the store
         self.ci = b(ci_int, self.model.word_length)
 
         # Decode
@@ -129,7 +128,7 @@ class Ssem(AbstractMachine):
                 self.stop_flag = True
 
             case _:
-                raise Exception(f"Unsuported command '{command.value}'")
+                raise MachineRuntimeError(f"Unsupported command '{command.value}'")
 
     def start(self, stop_event: Event, stopped: bool = False):
         """Start the machine until stop instruction is met

@@ -1,10 +1,10 @@
 
+import curses
+from curses import wrapper
+from math import exp
 from threading import Event
 from time import sleep
 from timeit import default_timer as timer
-from math import exp
-from curses import wrapper
-import curses
 
 from src.core.bitarray import BitArray
 from src.machines.abstractmachine import AbstractMachine
@@ -25,6 +25,9 @@ class CommandInterface:
     )
 
     SPEED_DISPLAY_PERIOD = 0.5  # seconds between updates of the displayed speed
+
+    PAIR_STORE = 1  # Bits and registers (green)
+    PAIR_UI = 2  # Top bar and key legend (blue)
 
     def __init__(self, machine: AbstractMachine, stop_event: Event):
         self.machine = machine
@@ -191,17 +194,17 @@ class CommandInterface:
         """Draw the key legend on the bottom bar
         """
         position = 0
-        position = self._add_text(self.bottom_bar, position, " Q ", curses.A_REVERSE | curses.color_pair(4))
+        position = self._add_text(self.bottom_bar, position, " Q ", curses.A_REVERSE | curses.color_pair(self.PAIR_UI))
         position = self._add_text(self.bottom_bar, position, " QUIT  ")
-        position = self._add_text(self.bottom_bar, position, " P ", curses.A_REVERSE | curses.color_pair(4))
+        position = self._add_text(self.bottom_bar, position, " P ", curses.A_REVERSE | curses.color_pair(self.PAIR_UI))
         position = self._add_text(self.bottom_bar, position, " RUN/STOP  ")
-        position = self._add_text(self.bottom_bar, position, "F10", curses.A_REVERSE | curses.color_pair(4))
+        position = self._add_text(self.bottom_bar, position, "F10", curses.A_REVERSE | curses.color_pair(self.PAIR_UI))
         position = self._add_text(self.bottom_bar, position, " STEP  ")
-        position = self._add_text(self.bottom_bar, position, " I ", curses.A_REVERSE | curses.color_pair(4))
+        position = self._add_text(self.bottom_bar, position, " I ", curses.A_REVERSE | curses.color_pair(self.PAIR_UI))
         position = self._add_text(self.bottom_bar, position, " SPEED UP  ")
-        position = self._add_text(self.bottom_bar, position, " K ", curses.A_REVERSE | curses.color_pair(4))
+        position = self._add_text(self.bottom_bar, position, " K ", curses.A_REVERSE | curses.color_pair(self.PAIR_UI))
         position = self._add_text(self.bottom_bar, position, " SPEED DOWN  ")
-        position = self._add_text(self.bottom_bar, position, " D ", curses.A_REVERSE | curses.color_pair(4))
+        position = self._add_text(self.bottom_bar, position, " D ", curses.A_REVERSE | curses.color_pair(self.PAIR_UI))
         position = self._add_text(self.bottom_bar, position, " DISPLAY  ")
 
     def _update_displayed_speed(self):
@@ -254,15 +257,19 @@ class CommandInterface:
 
         # //// TOP BAR ////
         status = "RUNNING" if self.machine.is_running else "STOPPED"
-        s = f"[ STATUS: {status} ]  [ CYCLES: {self.last_cycles} ]  [ {self.machine.last_instruction} ]  [ SPEED: {self.displayed_speed:2d}/{self.machine.speed} ips ] "
-        self.top_bar.addstr(0, 0, s[:cols], curses.color_pair(4))
+        s = (
+            f"[ STATUS: {status} ]  [ CYCLES: {self.last_cycles} ]  "
+            f"[ {self.machine.last_instruction} ]  "
+            f"[ SPEED: {self.displayed_speed:2d}/{self.machine.speed} ips ] "
+        )
+        self.top_bar.addstr(0, 0, s[:cols], curses.color_pair(self.PAIR_UI))
 
         # //// THE STORE ////
         ci_int = self.machine.ci.to_unsigned_int()
         a_int = self.machine.a.to_int()
-        self.pad.addstr(1, 0, f" {self._word_str(self.machine.ci)}", curses.A_BOLD | curses.color_pair(2))
+        self.pad.addstr(1, 0, f" {self._word_str(self.machine.ci)}", curses.A_BOLD | curses.color_pair(self.PAIR_STORE))
         self.pad.addstr(1, self.machine.model.word_length+2, f"CI: {ci_int:11}")
-        self.pad.addstr(2, 0, f" {self._word_str(self.machine.a)}", curses.A_BOLD | curses.color_pair(2))
+        self.pad.addstr(2, 0, f" {self._word_str(self.machine.a)}", curses.A_BOLD | curses.color_pair(self.PAIR_STORE))
         self.pad.addstr(2, self.machine.model.word_length+2, f"A : {a_int:11}")
 
         for i, word in enumerate(self.machine.store):
@@ -273,10 +280,14 @@ class CommandInterface:
             if i == ci_int:
                 bits_color = 0
             else:
-                bits_color = curses.color_pair(2)
+                bits_color = curses.color_pair(self.PAIR_STORE)
             self.pad.addstr(i+4, 0, pointer, curses.A_BOLD)
             self.pad.addstr(i+4, 1, self._word_str(word), curses.A_BOLD | bits_color)
-            self.pad.addstr(i+4, 1 + self.machine.model.word_length, f" {i:02d}: {word.to_int():11}  {self._word_interpretation(word)}")
+            self.pad.addstr(
+                i+4,
+                1 + self.machine.model.word_length,
+                f" {i:02d}: {word.to_int():11}  {self._word_interpretation(word)}"
+            )
 
         # Compose the whole frame in the virtual screen, then flush it with a
         # single physical update: the pad is displayed from screen row 0 and
@@ -301,10 +312,9 @@ class CommandInterface:
         stdscr.nodelay(True)
         curses.curs_set(0)
 
-        # TODO: better color indexing
         curses.use_default_colors()
-        for i in range(0, curses.COLORS):
-            curses.init_pair(i, i, -1)
+        curses.init_pair(self.PAIR_STORE, curses.COLOR_GREEN, -1)
+        curses.init_pair(self.PAIR_UI, curses.COLOR_BLUE, -1)
 
         self._setup_windows(stdscr)
 

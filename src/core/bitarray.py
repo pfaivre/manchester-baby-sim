@@ -117,7 +117,7 @@ class BitArray(list):
         return str(self)
 
 
-def b(value, digits: int=None) -> BitArray:
+def b(value, digits: int | None = None) -> BitArray:
     """Convert a value to a BitArray"""
     if isinstance(value, int):
         return BitArray.from_int(value, digits=digits)
@@ -126,5 +126,5 @@ def b(value, digits: int=None) -> BitArray:
     elif isinstance(value, Iterable):
         return BitArray.from_iterable(value)
     else:
-        raise ValueError(f"Unsupported type {type(value)}")
+        raise TypeError(f"Unsupported type {type(value)}")
 

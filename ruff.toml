@@ -1,0 +1,5 @@
+# Ruff configuration: the default rule set plus a line length limit
+line-length = 120
+
+[lint]
+extend-select = ["E501"]

@@ -1,6 +1,6 @@
 
-from pathlib import Path
 import re
+from pathlib import Path
 
 from src.core.bitarray import BitArray, b
 from src.core.store import Store
@@ -43,8 +43,8 @@ class Assembler:
 
         counter = 0
 
-        with open(file, "r") as file:
-            for line in file:
+        with open(file, "r") as f:
+            for line in f:
                 # Cleaning
                 line = line.rstrip('\n').split(';')[0].strip()
                 if not line:
@@ -57,7 +57,7 @@ class Assembler:
                     address = int(parts[0])
                     if address != counter:
                         raise ValueError
-                except ValueError as ex:
+                except ValueError:
                     raise AssemblerError(f"Error: invalid address, expected {counter:02d}\n")
 
                 # Mnemonic
@@ -66,7 +66,7 @@ class Assembler:
                 except KeyError:
                     raise AssemblerError(f"Error: invalid mnemonic '{parts[1]}'\n")
                 except IndexError:
-                    raise AssemblerError(f"Error: missing mnemonic\n")
+                    raise AssemblerError("Error: missing mnemonic\n")
 
                 # Data
                 data = 0
@@ -74,9 +74,11 @@ class Assembler:
                     try:
                         data = int(parts[2])
 
-                        if mnemonic in self.model.instructions_data_is_address:
-                            if not 0 <= data < store_tmp.word_count:
-                                raise AssemblerError(f"Error: '{mnemonic.name}' instruction requires a valid address (from 0 to {store.word_count-1})\n")
+                        if mnemonic in self.model.instructions_data_is_address and not 0 <= data < store_tmp.word_count:
+                            raise AssemblerError(
+                                f"Error: '{mnemonic.name}' instruction requires a valid address "
+                                f"(from 0 to {store.word_count-1})\n"
+                            )
 
                     except IndexError:
                         raise AssemblerError(f"Error: missing data for '{mnemonic.name}' instruction\n")
@@ -99,7 +101,10 @@ class Assembler:
                         word.engrave(self.model.address_start, data_bits)
 
                         # Write op code
-                        word.engrave(self.model.opcode_start, BitArray.from_int(mnemonic.value, self.model.opcode_length))
+                        word.engrave(
+                            self.model.opcode_start,
+                            BitArray.from_int(mnemonic.value, self.model.opcode_length)
+                        )
                     except IndexError:
                         raise AssemblerError("Error: Number is too large, not enough space to store binary value\n")
 
@@ -124,8 +129,8 @@ class Assembler:
 
         counter = 0
 
-        with open(file, "r") as file:
-            for line in file:
+        with open(file, "r") as f:
+            for line in f:
                 # Cleaning
                 line = line.rstrip('\n').split(';')[0].strip()
                 if not line:
@@ -145,10 +150,12 @@ class Assembler:
                 try:
                     word = b(parts[1])
                 except IndexError:
-                    raise AssemblerError(f"Error: missing word\n")
+                    raise AssemblerError("Error: missing word\n")
 
                 if len(word) != store.word_length:
-                    raise AssemblerError(f"Error: word has a wrong length (got {len(word)}, expected {store.word_length}\n")
+                    raise AssemblerError(
+                        f"Error: word has a wrong length (got {len(word)}, expected {store.word_length}\n"
+                    )
 
                 try:
                     store_tmp[counter] = word
@@ -172,8 +179,8 @@ class Assembler:
         if Path(file).is_dir():
             return "directory"
 
-        with open(file, "r") as file:
-            for line in file:
+        with open(file, "r") as f:
+            for line in f:
                 # Cleaning
                 line = line.rstrip('\n').split(';')[0].strip()
                 if not line:
@@ -201,7 +208,7 @@ class Assembler:
             self.model.opcode_start + self.model.opcode_length,
             self.model.address_start + self.model.address_length
         ):
-            raise AssemblerError(f"Error: Cannot read instruction, the given word is too short")
+            raise AssemblerError("Error: Cannot read instruction, the given word is too short")
 
         # Read operation code (e.g. on SSEM, bits 13, 14 and 15)
         opcode = b(word[self.model.opcode_start:self.model.opcode_start+self.model.opcode_length]).to_unsigned_int()

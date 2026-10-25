@@ -112,17 +112,17 @@ class TestAssembler(TestCase):
 
     def test_load_asm(self):
         """A valid assembly program is written word by word into the store"""
-        program = "\n".join([
-            "; Addition program",
-            "00 LDN 04    ; A = -X",
-            "01 SUB 05    ; A = A - Y",
-            "02 STO 06    ; R = A",
-            "03 STP",
-            "",
-            "04 NUM 3",
-            "05 NUM 4",
-            "06 NUM -5",
-        ])
+        program = (
+            "; Addition program\n"
+            "00 LDN 04    ; A = -X\n"
+            "01 SUB 05    ; A = A - Y\n"
+            "02 STO 06    ; R = A\n"
+            "03 STP\n"
+            "\n"
+            "04 NUM 3\n"
+            "05 NUM 4\n"
+            "06 NUM -5"
+        )
         assembler = self._real_assembler()
         store = self._real_store()
         store[10] = b("11111111111111111111111111111111")  # Pre-existing content
@@ -165,13 +165,13 @@ class TestAssembler(TestCase):
 
     def test_load_snp(self):
         """A valid binary dump is written word by word into the store"""
-        program = "\n".join([
-            "; A comment",
-            "",
-            "0000: 00000000000000000000000000000000",
-            "0001: 11111000000000100000000000000000 ; Some comment",
-            "0002: 01111000000001100000000000000000",
-        ])
+        program = (
+            "; A comment\n"
+            "\n"
+            "0000: 00000000000000000000000000000000\n"
+            "0001: 11111000000000100000000000000000 ; Some comment\n"
+            "0002: 01111000000001100000000000000000"
+        )
         assembler = self._real_assembler()
         store = self._real_store()
         store[5] = b("11111111111111111111111111111111")  # Pre-existing content
@@ -236,7 +236,7 @@ foo bar
         }
 
         for input, expected_output in test_suite.items():
-            with patch("builtins.open", mock_open(read_data=input)) as mock_file:
+            with patch("builtins.open", mock_open(read_data=input)):
                 result = test_func(mock_self, Path("some_file"))
                 self.assertEqual(result, expected_output)
 

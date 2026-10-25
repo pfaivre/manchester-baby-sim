@@ -13,6 +13,9 @@ A simulator of the SSEM ("Manchester Baby", 1948), the first stored-program comp
   - Examples: `samples/ssem/fibonacci.asm`, `samples/ssem/nightmare.snp`
 - Run the full test suite: `python -m unittest discover -s tests -p 'test_*.py'` (from the repo root)
   - Tests use `unittest` (not pytest). The VS Code config also runs unittest with discovery from `./tests`.
+- Lint changed files with Ruff, if it is available: `ruff check <files>` (from the repo root)
+  - Ruff is not a project dependency. Its config is `ruff.toml` at the repo root: the default rule set plus a 120-character line length limit (`E501`).
+  - If `ruff` is not installed (`command -v ruff` fails), skip linting silently; do not install it or add tooling unless asked.
 - There is no linter/formatter config, no CI, no packaging. Don't add tooling unless asked.
 
 ## Architecture
