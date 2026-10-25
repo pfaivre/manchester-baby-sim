@@ -7,6 +7,7 @@ from unittest import TestCase
 from src.core.store import Store
 from src.core.words import b, sign_extend
 from src.machines.abstractmachine import MachineRuntimeError
+from src.machines.breakpoints import CiValue, WordValue
 from src.machines.ssem import Ssem
 from src.machines.ssemmodel import SsemModel
 
@@ -161,3 +162,99 @@ class TestSsem(TestCase):
         self.ssem.clear_state()
         self.assertEqual(sign_extend(self.ssem.ci, SsemModel.word_length), 0, "CI cleared")
         self.assertEqual(sign_extend(self.ssem.a, SsemModel.word_length), 0, "Accumulator cleared")
+
+    def test_breakpoint_pauses_the_machine(self):
+        """A breakpoint pauses the machine on the cycle that makes its condition true"""
+        # LDN 05: A = 128, STO 16: word 16 = 128, JRP 06: jump back to 01
+        program = (
+            "00 NUM 0\n"
+            "01 LDN 05\n"
+            "02 STO 16\n"
+            "03 JRP 06\n"
+            "04 NUM 0\n"
+            "05 NUM -128\n"
+            "06 NUM -2"
+        )
+        ssem = Ssem(file=self._temp_file(program))
+        ssem.breakpoints.append(WordValue(16, 128, SsemModel.word_length))
+
+        ssem.stop_flag = False  # Simulate a running machine
+        ssem.instruction_cycle()  # 01 LDN 05
+        ssem.instruction_cycle()  # 02 STO 16
+
+        self.assertEqual(sign_extend(ssem.store[16], SsemModel.word_length), 128, "The store was written")
+        self.assertTrue(ssem.stop_flag, "The breakpoint paused the machine")
+        self.assertEqual(ssem.last_instruction, "02 STO 16")
+
+    def test_breakpoint_stays_armed_without_retriggering(self):
+        """Resuming does not pause again while the condition still holds"""
+        # LDN 05: A = 128, STO 16: word 16 = 128, JRP 06: jump back to 01
+        program = (
+            "00 NUM 0\n"
+            "01 LDN 05\n"
+            "02 STO 16\n"
+            "03 JRP 06\n"
+            "04 NUM 0\n"
+            "05 NUM -128\n"
+            "06 NUM -2"
+        )
+        ssem = Ssem(file=self._temp_file(program))
+        ssem.breakpoints.append(WordValue(16, 128, SsemModel.word_length))
+
+        ssem.stop_flag = False
+        ssem.instruction_cycle()  # 01 LDN 05
+        ssem.instruction_cycle()  # 02 STO 16: the breakpoint pauses the machine
+        self.assertTrue(ssem.stop_flag)
+
+        # Resuming: the machine loops, writing 128 again to word 16, which
+        # never left its value: the breakpoint must not pause it again
+        ssem.stop_flag = False
+        for _ in range(9):
+            ssem.instruction_cycle()
+
+        self.assertFalse(ssem.stop_flag, "No new pause while the condition still holds")
+        self.assertGreater(ssem.last_cycle, 10, "The machine kept running")
+
+    def test_breakpoint_set_on_a_true_condition(self):
+        """A breakpoint whose condition already holds pauses on the next cycle"""
+        self.ssem.store[16] = b(128, SsemModel.word_length)
+        self.ssem.store[1] = self._instruction("STP", 0)
+        self.ssem.breakpoints.append(WordValue(16, 128, SsemModel.word_length))
+
+        self.ssem.stop_flag = False
+        self.ssem.instruction_cycle()  # 01 STP
+
+        self.assertTrue(self.ssem.stop_flag, "The breakpoint paused the machine")
+        self.assertEqual(sign_extend(self.ssem.store[16], SsemModel.word_length), 128)
+
+    def test_ci_breakpoint_pauses_when_ci_arrives(self):
+        """A CI breakpoint pauses the machine when CI takes the given value
+
+        CI is read at the end of a cycle, where it holds the address of
+        the word just executed: the pause happens after that word ran,
+        and resuming executes the word after it.
+        """
+        program = (
+            "00 NUM 0\n"
+            "01 LDN 05\n"
+            "02 STO 06\n"
+            "03 STP\n"
+            "04 NUM 0\n"
+            "05 NUM -128\n"
+            "06 NUM 0\n"
+        )
+        ssem = Ssem(file=self._temp_file(program))
+        ssem.breakpoints.append(CiValue(2))
+
+        ssem.stop_flag = False  # Simulate a running machine
+        ssem.instruction_cycle()  # 01 LDN 05
+        ssem.instruction_cycle()  # 02 STO 06
+
+        self.assertTrue(ssem.stop_flag, "The breakpoint paused the machine")
+        self.assertEqual(sign_extend(ssem.ci, SsemModel.word_length), 2, "CI points at word 2")
+        self.assertEqual(ssem.last_instruction, "02 STO 06", "The pause follows the execution of word 2")
+
+        # The STP at word 3 has not run: resuming executes it
+        ssem.stop_flag = False
+        ssem.instruction_cycle()  # 03 STP
+        self.assertEqual(ssem.last_instruction, "03 STP 00")

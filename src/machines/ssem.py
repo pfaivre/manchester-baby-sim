@@ -46,6 +46,10 @@ class Ssem(AbstractMachine):
         self.a = 0
         self.stop_flag = True
 
+        # Breakpoints: read here in the machine thread after every cycle,
+        # and appended or removed from the interface thread
+        self.breakpoints = []
+
         self._last_cycle = 0
 
         # Values derived from the model, kept flat in the run loop's hot path
@@ -145,6 +149,17 @@ class Ssem(AbstractMachine):
         self._last_opcode = opcode
         self._last_data = data
         self._last_cycle += 1
+
+        # Breakpoints: checked only when the list is not empty, so the hot
+        # path stays free while no breakpoint is set. The list is read here
+        # and mutated from the interface thread: appending or removing
+        # entries during this iteration may skip one for this cycle, never
+        # crash (the interpreter makes single list operations atomic)
+        if self.breakpoints:
+            for breakpoint in self.breakpoints:
+                if breakpoint.is_met(self):
+                    self.stop_flag = True
+                    break
 
     def _execute(self, command, data: int):
         """Execute an instruction from its mnemonic

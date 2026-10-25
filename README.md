@@ -35,7 +35,7 @@ The result will appear on the 28th line in binary.
   - [x] Intrepret what is stored in each line
   - [x] Help window
 - [x] Unit and functional tests
-- [ ] Implement breakpoints: automatically stop at a given condition
+- [x] Implement breakpoints: automatically stop at a given condition
 - [ ] Implement other machines with this engine
 - [ ] Save user preferences
 
