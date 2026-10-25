@@ -1,9 +1,8 @@
-
 import re
 from pathlib import Path
 
-from src.core.bitarray import BitArray, b
 from src.core.store import Store
+from src.core.words import b
 
 
 class AssemblerError(Exception):
@@ -12,6 +11,9 @@ class AssemblerError(Exception):
 
 class Assembler:
     """Assembler for Manchester-like machines
+
+    Words are plain ints (bit 0 = least significant bit, two's complement for
+    negative values); see src/core/words.py.
     """
 
     def __init__(self, model):
@@ -86,27 +88,18 @@ class Assembler:
                         raise AssemblerError(f"Error: '{mnemonic.name}' instruction requires a numeric value\n")
 
                 # Write the line to the store
-                word = BitArray(store_tmp.word_length)
                 if mnemonic == self.model.Mnemonic.NUM:
-                    # Write numerical value
+                    # Write numerical value, as two's complement
                     try:
-                        data_bits = BitArray.from_int(data, store_tmp.word_length)
-                        word.engrave(0, data_bits)
+                        word = b(data, store_tmp.word_length)
                     except IndexError:
                         raise AssemblerError("Error: Number is too large, not enough space to store binary value\n")
                 else:
-                    # Write data
-                    data_bits = BitArray.from_int(data, self.model.address_length)
-                    try:
-                        word.engrave(self.model.address_start, data_bits)
-
-                        # Write op code
-                        word.engrave(
-                            self.model.opcode_start,
-                            BitArray.from_int(mnemonic.value, self.model.opcode_length)
-                        )
-                    except IndexError:
-                        raise AssemblerError("Error: Number is too large, not enough space to store binary value\n")
+                    # Operand address and op code, at the positions given by the model
+                    word = (
+                        (data << self.model.address_start)
+                        | (mnemonic.value << self.model.opcode_start)
+                    )
 
                 try:
                     store_tmp[counter] = word
@@ -152,9 +145,9 @@ class Assembler:
                 except IndexError:
                     raise AssemblerError("Error: missing word\n")
 
-                if len(word) != store.word_length:
+                if len(parts[1]) != store.word_length:
                     raise AssemblerError(
-                        f"Error: word has a wrong length (got {len(word)}, expected {store.word_length}\n"
+                        f"Error: word has a wrong length (got {len(parts[1])}, expected {store.word_length}\n"
                     )
 
                 try:
@@ -194,7 +187,7 @@ class Assembler:
 
         return None
 
-    def decode_instruction(self, word: BitArray) -> tuple:
+    def decode_instruction(self, word: int) -> tuple:
         """Read the given word and parses its components
 
         Params:
@@ -203,18 +196,11 @@ class Assembler:
         Returns:
             (command, data)
         """
-        # Check the word is long enough to contain an instruction
-        if len(word) < max(
-            self.model.opcode_start + self.model.opcode_length,
-            self.model.address_start + self.model.address_length
-        ):
-            raise AssemblerError("Error: Cannot read instruction, the given word is too short")
-
         # Read operation code (e.g. on SSEM, bits 13, 14 and 15)
-        opcode = b(word[self.model.opcode_start:self.model.opcode_start+self.model.opcode_length]).to_unsigned_int()
+        opcode = (word >> self.model.opcode_start) & ((1 << self.model.opcode_length) - 1)
 
-        ## Read data (e.g. on SSEM, bits 0, 1, 2, 3 and 4)
-        data = b(word[self.model.address_start:self.model.address_start+self.model.address_length]).to_unsigned_int()
+        # Read data (e.g. on SSEM, bits 0, 1, 2, 3 and 4)
+        data = (word >> self.model.address_start) & ((1 << self.model.address_length) - 1)
 
         try:
             command = self.model.Mnemonic(opcode)
@@ -229,4 +215,3 @@ class Assembler:
         It will try its best efforts to differentiate NUM to instructions, but does not guarranty a perfect result.
         """
         raise NotImplementedError
-

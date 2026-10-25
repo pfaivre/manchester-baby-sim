@@ -1,10 +1,9 @@
-
 from pathlib import Path
 from threading import Event
 from time import perf_counter, sleep
 
-from src.core.bitarray import BitArray, b
 from src.core.store import Store
+from src.core.words import sign_extend
 from src.machines.abstractmachine import AbstractMachine, MachineRuntimeError
 from src.machines.assembler import Assembler
 from src.machines.ssemmodel import SsemModel
@@ -32,6 +31,9 @@ class Ssem(AbstractMachine):
             - STP: Stop the execution
         - Address size: 5 bits
         - Typically performs at around 700 instructions per seconds
+
+    Words are plain ints (bit 0 = least significant bit, two's complement for
+    negative values); see src/core/words.py.
     """
 
     def __init__(self, file: Path | None = None):
@@ -40,12 +42,52 @@ class Ssem(AbstractMachine):
         self.assembler = Assembler(model=self.model)
 
         self.store = Store(self.model.word_length, self.model.word_count)
-        self.ci = BitArray(self.model.word_length)
-        self.a = BitArray(self.model.word_length)
+        self.ci = 0
+        self.a = 0
         self.stop_flag = True
 
         self._last_cycle = 0
-        self._last_instruction = ""
+
+        # Values derived from the model, kept flat in the run loop's hot path
+        self._word_length = self.model.word_length
+        self._word_mask = (1 << self._word_length) - 1
+        self._word_size = 1 << self._word_length
+        self._sign_bit = 1 << (self._word_length - 1)
+        self._word_count = self.model.word_count
+        self._opcode_shift = self.model.opcode_start
+        self._opcode_mask = (1 << self.model.opcode_length) - 1
+        self._address_mask = (1 << self.model.address_length) - 1
+
+        # Dispatch table: one handler per opcode of the model, in the run loop
+        # where matching on the mnemonic would cost an Enum construction per
+        # cycle. Opcodes with no handler (gaps in the model) raise at run time.
+        handlers = {
+            "JMP": self._exec_jmp,
+            "JRP": self._exec_jrp,
+            "LDN": self._exec_ldn,
+            "STO": self._exec_sto,
+            "SUB": self._exec_sub,
+            "SUB2": self._exec_sub,
+            "CMP": self._exec_cmp,
+            "STP": self._exec_stp,
+        }
+        self._dispatch = []
+        self._mnemonic_names = []
+        for opcode in range(1 << self.model.opcode_length):
+            try:
+                mnemonic = self.model.Mnemonic(opcode)
+            except ValueError:
+                self._dispatch.append(None)
+                self._mnemonic_names.append(str(opcode))
+                continue
+            self._dispatch.append(handlers.get(mnemonic.name))
+            self._mnemonic_names.append(mnemonic.name)
+
+        # Last executed instruction, kept as raw values: building the display
+        # string on every cycle would dominate the run loop
+        self._last_address = 0
+        self._last_opcode = None
+        self._last_data = 0
 
         if file:
             self.assembler.load_file(file, self.store)
@@ -55,8 +97,10 @@ class Ssem(AbstractMachine):
         return self._last_cycle
 
     @property
-    def last_instruction(self):
-        return self._last_instruction
+    def last_instruction(self) -> str:
+        if self._last_opcode is None:
+            return ""
+        return f"{self._last_address:02d} {self._mnemonic_names[self._last_opcode]} {self._last_data:02d}"
 
     @property
     def is_running(self):
@@ -67,68 +111,87 @@ class Ssem(AbstractMachine):
 
         It first increments the program counter, then decodes the next instruction and executes it.
         """
-        # Fetch
-        ci_int = self.ci.to_int()
-        ci_int += 1
-        ci_int %= self.model.word_count  # Program counter loops back to the beginning when it exceeds the store
-        self.ci = b(ci_int, self.model.word_length)
+        self._cycle()
+        return self.last_instruction
 
-        # Decode
-        word = self.store[ci_int]
-        command, data = self.assembler.decode_instruction(word)
+    def _cycle(self):
+        """Fetch, decode and execute one instruction: the machine's hot path
+
+        Kept separate from instruction_cycle() so the run loop can execute
+        batches of cycles without building the display string each time.
+        """
+        # Fetch: the program counter loops back to the beginning when it
+        # exceeds the store
+        ci = (self.ci + 1) % self._word_count
+        self.ci = ci
+        word = self.store[ci]
+
+        # Decode: e.g. on the SSEM, bits 0-4 hold the operand and bits 13-15
+        # the opcode
+        opcode = (word >> self._opcode_shift) & self._opcode_mask
+        data = word & self._address_mask
 
         # Execute
+        handler = self._dispatch[opcode]
+        if handler is None:
+            raise MachineRuntimeError(f"Unsupported command '{opcode}'")
+
         try:
-            self._execute(command, data)
+            handler(data)
         except IndexError:
             raise MachineRuntimeError("Error: Out of bound memory access")
 
-        self._last_instruction = f"{ci_int:02d} {command.name} {data:02d}"
+        self._last_address = ci
+        self._last_opcode = opcode
+        self._last_data = data
         self._last_cycle += 1
 
-        return self._last_instruction
+    def _execute(self, command, data: int):
+        """Execute an instruction from its mnemonic
 
-    def _execute(self, command, data: BitArray):
-        """Execute an instruction
+        The run loop dispatches directly on the opcode; this is the mnemonic
+        level entry point, used to execute an isolated instruction.
         """
-        match command:
-            case self.model.Mnemonic.JMP:
-                # Change the next address to execute
-                self.ci = b(self.store[data])  # Copy the array
+        if command.value is None or command.value >= len(self._dispatch) or self._dispatch[command.value] is None:
+            raise MachineRuntimeError(f"Unsupported command '{command.value}'")
 
-            case self.model.Mnemonic.JRP:
-                # Jump to the instruction at address CI + value of S
-                value = self.store[data].to_int()
-                ci_int = self.ci.to_int()
-                self.ci = b(value + ci_int, self.model.word_length)
+        try:
+            self._dispatch[command.value](data)
+        except IndexError:
+            raise MachineRuntimeError("Error: Out of bound memory access")
 
-            case self.model.Mnemonic.LDN:
-                # Fetch the negated value
-                value = -self.store[data].to_int()
-                # Save it to the accumulator
-                self.a = b(value, self.model.word_length)
+    def _exec_jmp(self, data: int):
+        """JMP S: jump to the address held at the address S (indirect jump)"""
+        self.ci = self.store[data]
 
-            case self.model.Mnemonic.STO:
-                # Save the value of the accumulator to the given address
-                self.store[data] = b(self.a)
+    def _exec_jrp(self, data: int):
+        """JRP S: jump to the instruction at address CI + value of S"""
+        self.ci = (self.store[data] + self.ci) & self._word_mask
 
-            case self.model.Mnemonic.SUB | self.model.Mnemonic.SUB2:
-                s_int = self.store[data].to_int()
-                a_int = self.a.to_int()
-                # Save (accumulator - S) to the accumulator
-                self.a = b(a_int - s_int, self.model.word_length)
+    def _exec_ldn(self, data: int):
+        """LDN S: load the negated value of the address S to the accumulator"""
+        self.a = -sign_extend(self.store[data], self._word_length) & self._word_mask
 
-            case self.model.Mnemonic.CMP:
-                # Skip next line if accumulator is negative
-                if self.a.to_int() < 0:
-                    ci_int = self.ci.to_int() + 1
-                    self.ci = b(ci_int, self.model.word_length)
+    def _exec_sto(self, data: int):
+        """STO S: store the value of the accumulator to the address S"""
+        self.store[data] = self.a
 
-            case self.model.Mnemonic.STP:
-                self.stop_flag = True
+    def _exec_sub(self, data: int):
+        """SUB S: subtract the value in address S from the accumulator"""
+        s = self.store[data]
+        if s & self._sign_bit:
+            s -= self._word_size
 
-            case _:
-                raise MachineRuntimeError(f"Unsupported command '{command.value}'")
+        self.a = (self.a - s) & self._word_mask
+
+    def _exec_cmp(self, data: int):
+        """CMP: skip the next instruction if the accumulator is negative"""
+        if self.a & self._sign_bit:
+            self.ci = (self.ci + 1) & self._word_mask
+
+    def _exec_stp(self, data: int):
+        """STP: stop the execution"""
+        self.stop_flag = True
 
     def start(self, stop_event: Event, stopped: bool = False):
         """Start the machine until stop instruction is met
@@ -143,10 +206,12 @@ class Ssem(AbstractMachine):
                 batch_size = max(1, int(BATCH_DURATION / period))
                 deadline = next_deadline + batch_size * period
 
+                cycle = self._cycle
+                stop_requested = stop_event.is_set
                 for _ in range(batch_size):
-                    self.instruction_cycle()
+                    cycle()
 
-                    if stop_event.is_set():
+                    if stop_requested():
                         return
                     if self.stop_flag:
                         break
@@ -174,6 +239,5 @@ class Ssem(AbstractMachine):
 
     def clear_state(self):
         """Reset the program counter and the accumulator to zero"""
-        self.ci = BitArray(self.model.word_length)
-        self.a = BitArray(self.model.word_length)
-
+        self.ci = 0
+        self.a = 0

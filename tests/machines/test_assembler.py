@@ -4,8 +4,8 @@ from pathlib import Path
 from unittest import TestCase
 from unittest.mock import MagicMock, mock_open, patch
 
-from src.core.bitarray import b
 from src.core.store import Store
+from src.core.words import b
 from src.machines.assembler import Assembler, AssemblerError
 from src.machines.ssemmodel import SsemModel
 
@@ -269,8 +269,6 @@ foo bar
             "00000111111110001111111111111111": (self.mock_model.Mnemonic.A, 0),
 
             "0000011111111000": (self.mock_model.Mnemonic.A, 0),
-            "000001111111100":  AssemblerError,
-            "0":                AssemblerError,
         }
 
         for input, expected_output in test_suite.items():

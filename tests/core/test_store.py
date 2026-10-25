@@ -1,7 +1,7 @@
 from unittest import TestCase
 
-from src.core.bitarray import b
 from src.core.store import Store
+from src.core.words import b
 
 
 class TestStore(TestCase):
@@ -12,13 +12,23 @@ class TestStore(TestCase):
     def test___init__(self):
         store = Store(23, 42)
         self.assertEqual(42, len(store._store), "Number of words")
-        self.assertEqual(23, len(store._store[0]), "Size of words")
+        self.assertEqual(0, store._store[0], "Size of words")
 
         store = Store(6, 4)
         self.assertEqual(b("000000"), store[0])
         self.assertEqual(b("000000"), store[1])
         self.assertEqual(b("000000"), store[2])
         self.assertEqual(b("000000"), store[3])
+
+    def test_bracket_operator_masks_to_word_length(self):
+        """Words are masked to the store's word length when written"""
+        store = Store(8, 3)
+
+        store[1] = 0b101010101  # 9 bits: the most significant bit is dropped
+        self.assertEqual(0b01010101, store[1])
+
+        store[2] = -1
+        self.assertEqual(0b11111111, store[2], "Negative values wrap to two's complement")
 
     def test_word_length(self):
         store = Store(10, 11)

@@ -23,7 +23,7 @@ A simulator of the SSEM ("Manchester Baby", 1948), the first stored-program comp
 ```
 main.py                     Entry point: builds Ssem + CommandInterface, runs each in a thread
 src/core/                   Machine-agnostic primitives
-├── bitarray.py             BitArray (list of bools, LSB-first) + b() converter; SSEM bit conventions, two's complement
+├── words.py                Words as plain ints (bit 0 = LSB) + b() converter, sign_extend(), to_string(); SSEM bit conventions, two's complement
 └── store.py                Store: fixed-size words of fixed length, index-addressed
 src/machines/
 ├── abstractmachine.py      AbstractMachine (ABC) + MachineRuntimeError; contract for any simulated machine
@@ -38,7 +38,8 @@ samples/ssem/               Sample programs; samples/ssem/tests/ are the binary 
 ### Key design decisions
 
 - **Machine/model separation.** `SsemModel` describes a machine declaratively (word layout, mnemonics, `instructions_with_data`, `instructions_data_is_address`). `Assembler` and `Ssem` consume any model. The roadmap includes other machines — keep new machines defined as a model + machine pair, and don't bake SSEM constants into generic code.
-- **SSEM bit conventions.** Words are LSB-first in `BitArray` (index 0 = least significant bit). Instructions: bits 0-4 = operand address, bits 13-15 = opcode. Negatives are two's complement. `LDN` loads the *negation*; `JMP` is an *indirect* jump. Don't "fix" these — they are historical accuracy, and the README states accuracy as the project's goal.
+- **SSEM bit conventions.** Words are plain ints, bit 0 = least significant bit (so the SSEM display order is `format(word, "032b")[::-1]`). Instructions: bits 0-4 = operand address, bits 13-15 = opcode. Negatives are two's complement (`sign_extend()` reads them back). `LDN` loads the *negation*; `JMP` is an *indirect* jump. Don't "fix" these — they are historical accuracy, and the README states accuracy as the project's goal.
+- **Run-loop performance.** `Ssem._cycle()` is the hot path: it decodes with precomputed shifts/masks and dispatches through a handler table indexed by the raw opcode (`_execute()` is the mnemonic-level entry for isolated instructions). `last_instruction` is a lazy property built from raw `_last_*` fields — never format a string per cycle in the run loop. `Store.clear()` fills the list in place, so references taken into the run loop stay valid.
 - **Threading model.** `main.py` runs the machine and the UI in two threads sharing a `stop_event`; the UI also toggles `machine.stop_flag`. Both must be honored when stopping/stepping. `Ssem.start()` polls `stop_event` between instruction batches and pauses (never exits) while stopped — `main.py` relies on `join()` on both threads at exit.
 - **UI performance invariants.** In `commandinterface.py`: sizes always come from `stdscr.getmaxyx()`, never from `curses.LINES/COLS` (they lag during drag-resize); `_setup_windows` uses `erase()` not `clear()` (avoids flicker); don't use `curses.resizeterm()` (it self-loops KEY_RESIZE); writing the last cell of the last line makes `addstr` error, hence the `cols - 1` truncations and the swallowed `curses.error` in the too-small branch; the top bar must stay a single-line window — a full-screen `newwin` wipes the store area from the virtual screen on its first refresh, since a fresh window copies all its blank lines; a refresh only copies the lines touched since the window's last refresh, so an overlay (the `H` help pop-up) must be `touchwin`-ed before every `noutrefresh` to stay above the pad, and must `erase` its own rectangle when closing (nothing else repaints the regions outside the pad, and the bottom bar needs a `touchwin` to recover its legend); frames are only drawn when something changed (`_needs_redraw`: a key press sets `dirty`, machine movement moves `last_cycle`), so an idle stopped machine draws nothing; with keypad mode on, ncurses holds a lone Esc for the escape-sequence completion delay before returning it, and that wait blocks `getch` even in `nodelay` mode — hence `curses.set_escdelay(25)` in `run_interface` (the default 1 s froze the whole UI on Esc, delivering it only on the next key press; arrow-key sequences are written by the terminal in one piece and match instantly regardless). Comments in that file document these pitfalls — read them before touching display/resize code.
 - **Speed pacing.** `Ssem.start()` executes instructions in batches against an absolute deadline (`BATCH_DURATION`) to amortize `sleep()` overshoot and avoid drift. The displayed speed is exponentially smoothed in `_update_displayed_speed`. Preserve this scheme when changing run/step behavior.
@@ -50,7 +51,7 @@ samples/ssem/               Sample programs; samples/ssem/tests/ are the binary 
 
 ## Conventions
 
-- Import style: absolute from repo root (`from src.core.bitarray import b`); tests do the same, so run tests from the repo root.
+- Import style: absolute from repo root (`from src.core.words import b`); tests do the same, so run tests from the repo root.
 - No `__init__.py` files in `src/` — packages are implicit; keep it that way.
 - Docstrings on public classes/methods, in the existing concise style. Keep the class-level docstring of `Ssem` (it documents the instruction set).
 - Tests live in `tests/` mirroring `src/` layout; functional tests build a store from binary words and run the machine to its stop instruction. Prefer extending the existing suite over ad-hoc scripts.

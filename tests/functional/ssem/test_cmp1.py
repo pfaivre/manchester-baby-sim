@@ -1,6 +1,6 @@
 from unittest import TestCase
 
-from src.core.bitarray import b
+from src.core.words import b
 from src.machines.ssem import Ssem
 
 

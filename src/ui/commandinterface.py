@@ -6,7 +6,7 @@ from threading import Event
 from time import sleep
 from timeit import default_timer as timer
 
-from src.core.bitarray import BitArray
+from src.core.words import sign_extend, to_string
 from src.machines.abstractmachine import AbstractMachine
 from src.machines.assembler import AssemblerError
 
@@ -17,11 +17,13 @@ class InterfaceError(Exception):
 
 class CommandInterface:
 
+    # The characters representing a set (on) and a cleared (off) bit, in the
+    # order they are cycled through by the D key
     BIT_REPRESENTATIONS = (
-        {True: "#", False: "."},  # High contrast ASCII characters
-        {True: "−", False: "·"},  # Fancy characters for more accurate display
-        {True: "_", False: "."},  # ASCII compatible characters
-        {True: "1", False: "0"},  # 0s and 1s
+        ("#", "."),  # High contrast ASCII characters
+        ("−", "·"),  # Fancy characters for more accurate display
+        ("_", "."),  # ASCII compatible characters
+        ("1", "0"),  # 0s and 1s
     )
 
     # Keys of the interface: (key, bottom bar legend, help description), in
@@ -146,26 +148,26 @@ class CommandInterface:
             else:
                 self._close_help_window()
 
-    def _word_str(self, word: BitArray) -> str:
+    def _word_str(self, word: int) -> str:
         """Represents a word according to the current style
 
         Args:
-            word (BitArray): Word to represent
+            word (int): Word to represent
 
         Returns:
             str: Visual representation of the word
         """
-        str_word = [self.BIT_REPRESENTATIONS[self.current_bit_representation][b] for b in word]
-        return "".join(map(str, str_word))
+        on, off = self.BIT_REPRESENTATIONS[self.current_bit_representation]
+        return to_string(word, self.machine.store.word_length, on=on, off=off)
 
-    def _word_interpretation(self, word: BitArray) -> str:
+    def _word_interpretation(self, word: int) -> str:
         """Decodes the word as an instruction for the display
 
         Every word is shown as an instruction, as on the real machine: data
         words are decoded too (e.g. a negative number reads as STP).
 
         Args:
-            word (BitArray): Word to decode
+            word (int): Word to decode
 
         Returns:
             str: Mnemonic and data, or "?" if the word holds no valid opcode
@@ -440,8 +442,8 @@ class CommandInterface:
         self.top_bar.addstr(0, 0, s[:cols - 1], curses.color_pair(self.PAIR_UI))
 
         # //// THE STORE ////
-        ci_int = self.machine.ci.to_unsigned_int()
-        a_int = self.machine.a.to_int()
+        ci_int = self.machine.ci
+        a_int = sign_extend(self.machine.a, self.machine.model.word_length)
         self.pad.addstr(1, 0, f" {self._word_str(self.machine.ci)}", curses.A_BOLD | curses.color_pair(self.PAIR_STORE))
         self.pad.addstr(1, self.machine.model.word_length+2, f"CI: {ci_int:11}")
         self.pad.addstr(2, 0, f" {self._word_str(self.machine.a)}", curses.A_BOLD | curses.color_pair(self.PAIR_STORE))
@@ -461,7 +463,7 @@ class CommandInterface:
             self.pad.addstr(
                 i+4,
                 1 + self.machine.model.word_length,
-                f" {i:02d}: {word.to_int():11}  {self._word_interpretation(word)}"
+                f" {i:02d}: {sign_extend(word, self.machine.model.word_length):11}  {self._word_interpretation(word)}"
             )
 
         # Compose the whole frame in the virtual screen, then flush it with a

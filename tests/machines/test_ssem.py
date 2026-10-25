@@ -4,8 +4,8 @@ from threading import Event, Thread
 from time import sleep, time
 from unittest import TestCase
 
-from src.core.bitarray import BitArray, b
 from src.core.store import Store
+from src.core.words import b, sign_extend
 from src.machines.abstractmachine import MachineRuntimeError
 from src.machines.ssem import Ssem
 from src.machines.ssemmodel import SsemModel
@@ -24,15 +24,13 @@ class TestSsem(TestCase):
         path.write_text(content)
         return path
 
-    def _instruction(self, mnemonic_name: str, data: int) -> BitArray:
+    def _instruction(self, mnemonic_name: str, data: int) -> int:
         """Build a word containing the given instruction"""
-        word = BitArray(SsemModel.word_length)
-        word.engrave(SsemModel.address_start, BitArray.from_int(data, SsemModel.address_length))
-        word.engrave(
-            SsemModel.opcode_start,
-            BitArray.from_int(SsemModel.Mnemonic[mnemonic_name].value, SsemModel.opcode_length)
+        mnemonic = SsemModel.Mnemonic[mnemonic_name]
+        return (
+            (data << SsemModel.address_start)
+            | (mnemonic.value << SsemModel.opcode_start)
         )
-        return word
 
     def test___init__(self):
         """A fresh machine is stopped, with zeroed store, CI and accumulator"""
@@ -62,12 +60,12 @@ class TestSsem(TestCase):
         """A cycle increments CI, then fetches and executes the instruction at the new CI"""
         self.ssem.store[1] = self._instruction("LDN", 4)
         self.ssem.store[2] = self._instruction("STP", 0)
-        self.ssem.store[4] = BitArray.from_int(5, SsemModel.word_length)
+        self.ssem.store[4] = b(5, SsemModel.word_length)
 
         instruction = self.ssem.instruction_cycle()
 
-        self.assertEqual(self.ssem.ci.to_int(), 1, "CI incremented to the executed address")
-        self.assertEqual(self.ssem.a.to_int(), -5, "LDN loads the negated value")
+        self.assertEqual(sign_extend(self.ssem.ci, SsemModel.word_length), 1, "CI incremented to the executed address")
+        self.assertEqual(sign_extend(self.ssem.a, SsemModel.word_length), -5, "LDN loads the negated value")
         self.assertEqual(instruction, "01 LDN 04")
         self.assertEqual(self.ssem.last_instruction, "01 LDN 04")
         self.assertEqual(self.ssem.last_cycle, 1)
@@ -125,7 +123,7 @@ class TestSsem(TestCase):
             sleep(0.01)
         self.assertTrue(ssem.stop_flag, "The STP instruction stopped the machine")
         self.assertEqual(ssem.last_instruction, "02 STP 00")
-        self.assertEqual(ssem.a.to_int(), -5, "The accumulator holds the LDN result")
+        self.assertEqual(sign_extend(ssem.a, SsemModel.word_length), -5, "The accumulator holds the LDN result")
 
         stop_event.set()
         thread.join(timeout=2)
@@ -153,7 +151,7 @@ class TestSsem(TestCase):
 
     def test_clear_memory_and_state(self):
         """clear_memory and clear_state reset the store and the registers"""
-        self.ssem.store[5] = BitArray.from_int(123, SsemModel.word_length)
+        self.ssem.store[5] = b(123, SsemModel.word_length)
         self.ssem.ci = b(7, SsemModel.word_length)
         self.ssem.a = b(-9, SsemModel.word_length)
 
@@ -161,5 +159,5 @@ class TestSsem(TestCase):
         self.assertEqual(self.ssem.store[5], b("0" * 32), "Store cleared")
 
         self.ssem.clear_state()
-        self.assertEqual(self.ssem.ci.to_int(), 0, "CI cleared")
-        self.assertEqual(self.ssem.a.to_int(), 0, "Accumulator cleared")
+        self.assertEqual(sign_extend(self.ssem.ci, SsemModel.word_length), 0, "CI cleared")
+        self.assertEqual(sign_extend(self.ssem.a, SsemModel.word_length), 0, "Accumulator cleared")

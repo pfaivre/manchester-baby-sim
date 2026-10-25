@@ -1,5 +1,4 @@
-
-from src.core.bitarray import BitArray
+from src.core.words import to_string
 
 
 class Store:
@@ -7,12 +6,16 @@ class Store:
 
     It is a collection of words of a given size.
     For example, the SSEM had 32 words of 32 bits each, for a total of 1024 bits.
+
+    Words are plain ints (bit 0 = least significant bit, two's complement for
+    negative values); see src/core/words.py.
     """
 
     def __init__(self, word_length: int, word_count: int):
         self._word_length = word_length
         self._word_count = word_count
-        self.clear()
+        self._word_mask = (1 << word_length) - 1
+        self._store = [0] * word_count
 
     @property
     def word_length(self) -> int:
@@ -24,21 +27,19 @@ class Store:
         """The number of words contained in the store"""
         return self._word_count
 
-    def __getitem__(self, address: int) -> BitArray:
+    def __getitem__(self, address: int) -> int:
         """Get the word at the given address"""
         return self._store[address]
 
-    def __setitem__(self, address: int, word: BitArray):
+    def __setitem__(self, address: int, word: int):
         """Replace the word at the given address"""
-        self._store[address] = word
+        self._store[address] = word & self._word_mask
 
     def clear(self):
         """Fill the entire store with zeros"""
-        self._store = [
-            BitArray(self._word_length) for _ in range(self._word_count)
-        ]
+        # In place, so references taken by the machine's run loop stay valid
+        self._store[:] = [0] * self._word_count
 
     def __str__(self) -> str:
         """Get a visual representation of the store"""
-        lines = [str(line) for line in self._store]
-        return "\n".join(lines)
+        return "\n".join(to_string(word, self._word_length) for word in self._store)
